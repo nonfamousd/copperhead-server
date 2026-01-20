@@ -175,6 +175,141 @@ class Game:
         }
 
 
+class AIPlayer:
+    """AI-controlled snake with configurable difficulty (1-10)."""
+    
+    def __init__(self, difficulty: int = 5):
+        self.difficulty = max(1, min(10, difficulty))
+    
+    def get_move(self, game: "Game", player_id: int) -> Optional[str]:
+        snake = game.snakes.get(player_id)
+        if not snake or not snake.alive:
+            return None
+        
+        head = snake.head()
+        food = game.food
+        
+        # Get all possible moves
+        directions = ["up", "down", "left", "right"]
+        moves = {"up": (0, -1), "down": (0, 1), "left": (-1, 0), "right": (1, 0)}
+        opposites = {"up": "down", "down": "up", "left": "right", "right": "left"}
+        
+        # Filter out reverse direction
+        valid_directions = [d for d in directions if d != opposites[snake.direction]]
+        
+        # Evaluate each direction
+        scored_moves = []
+        for direction in valid_directions:
+            dx, dy = moves[direction]
+            new_head = (head[0] + dx, head[1] + dy)
+            
+            # Check if move is safe
+            is_safe = self._is_safe(new_head, game, player_id)
+            
+            # Calculate distance to food
+            food_dist = 0
+            if food:
+                food_dist = abs(new_head[0] - food[0]) + abs(new_head[1] - food[1])
+            
+            scored_moves.append({
+                "direction": direction,
+                "safe": is_safe,
+                "food_dist": food_dist,
+                "new_head": new_head
+            })
+        
+        # Sort by safety first, then by food distance
+        safe_moves = [m for m in scored_moves if m["safe"]]
+        unsafe_moves = [m for m in scored_moves if not m["safe"]]
+        
+        # Higher difficulty = smarter choices
+        mistake_chance = (10 - self.difficulty) / 10 * 0.3  # 0% to 27% mistake rate
+        
+        if safe_moves:
+            # Sort safe moves by food distance
+            safe_moves.sort(key=lambda m: m["food_dist"])
+            
+            # At lower difficulties, sometimes pick suboptimal moves
+            if random.random() < mistake_chance and len(safe_moves) > 1:
+                return random.choice(safe_moves)["direction"]
+            
+            # Higher difficulty: look ahead for better paths
+            if self.difficulty >= 7:
+                best_move = self._look_ahead(safe_moves, game, player_id)
+                if best_move:
+                    return best_move
+            
+            return safe_moves[0]["direction"]
+        elif unsafe_moves:
+            # No safe moves, pick the least bad option
+            return unsafe_moves[0]["direction"]
+        
+        return snake.direction
+    
+    def _is_safe(self, pos: tuple[int, int], game: "Game", player_id: int) -> bool:
+        x, y = pos
+        
+        # Wall collision
+        if x < 0 or x >= GRID_WIDTH or y < 0 or y >= GRID_HEIGHT:
+            return False
+        
+        # Self collision
+        snake = game.snakes[player_id]
+        if pos in snake.body[:-1]:  # Exclude tail as it will move
+            return False
+        
+        # Other snake collision
+        for pid, other in game.snakes.items():
+            if pid != player_id and other.alive:
+                if pos in other.body:
+                    return False
+        
+        return True
+    
+    def _look_ahead(self, moves: list, game: "Game", player_id: int) -> Optional[str]:
+        """Look ahead to avoid traps."""
+        best_move = None
+        best_space = -1
+        
+        for move in moves:
+            # Count available spaces from this position
+            space = self._count_space(move["new_head"], game, player_id)
+            if space > best_space:
+                best_space = space
+                best_move = move["direction"]
+        
+        return best_move
+    
+    def _count_space(self, start: tuple[int, int], game: "Game", player_id: int, max_depth: int = 10) -> int:
+        """Flood fill to count available space."""
+        visited = set()
+        queue = [start]
+        count = 0
+        
+        obstacles = set()
+        for pid, snake in game.snakes.items():
+            obstacles.update(snake.body[:-1] if pid == player_id else snake.body)
+        
+        while queue and count < max_depth * 4:
+            pos = queue.pop(0)
+            if pos in visited:
+                continue
+            
+            x, y = pos
+            if x < 0 or x >= GRID_WIDTH or y < 0 or y >= GRID_HEIGHT:
+                continue
+            if pos in obstacles:
+                continue
+            
+            visited.add(pos)
+            count += 1
+            
+            for dx, dy in [(0, -1), (0, 1), (-1, 0), (1, 0)]:
+                queue.append((x + dx, y + dy))
+        
+        return count
+
+
 class GameManager:
     def __init__(self):
         self.game = Game()
@@ -182,6 +317,8 @@ class GameManager:
         self.ready: set[int] = set()
         self.game_task: Optional[asyncio.Task] = None
         self.pending_mode: str = "two_player"
+        self.ai_player: Optional[AIPlayer] = None
+        self.ai_player_id: Optional[int] = None
 
     async def connect(self, player_id: int, websocket: WebSocket):
         await websocket.accept()
@@ -198,6 +335,8 @@ class GameManager:
             logger.info("⏹️  Game stopped (player disconnected)")
         self.game = Game()
         self.pending_mode = "two_player"
+        self.ai_player = None
+        self.ai_player_id = None
         logger.info(f"❌ Player {player_id} disconnected ({len(self.connections)} player(s) online)")
 
     async def handle_message(self, player_id: int, data: dict):
@@ -209,30 +348,65 @@ class GameManager:
                     self.game.snakes[player_id].set_direction(direction)
         elif action == "ready":
             mode = data.get("mode", "two_player")
-            if mode in ("one_player", "two_player"):
+            if mode in ("one_player", "two_player", "vs_ai"):
                 self.pending_mode = mode
+            
+            # Handle AI opponent setup
+            if mode == "vs_ai":
+                ai_difficulty = data.get("ai_difficulty", 5)
+                self.ai_player = AIPlayer(difficulty=ai_difficulty)
+                self.ai_player_id = 2 if player_id == 1 else 1
+                logger.info(f"🤖 AI opponent enabled (difficulty: {ai_difficulty}, player: {self.ai_player_id})")
+            else:
+                self.ai_player = None
+                self.ai_player_id = None
+            
             self.ready.add(player_id)
             logger.info(f"👍 Player {player_id} ready (mode: {self.pending_mode})")
-            required_players = 1 if self.pending_mode == "one_player" else 2
+            
+            # For vs_ai mode, only need 1 human player
+            if self.pending_mode == "vs_ai":
+                required_players = 1
+            elif self.pending_mode == "one_player":
+                required_players = 1
+            else:
+                required_players = 2
+            
             if len(self.ready) >= required_players and not self.game.running:
                 await self.start_game()
 
     async def start_game(self):
-        self.game = Game(mode=self.pending_mode)
+        # For vs_ai mode, use two_player game setup
+        game_mode = "two_player" if self.pending_mode == "vs_ai" else self.pending_mode
+        self.game = Game(mode=game_mode)
         self.game.running = True
-        logger.info(f"🎮 Game started! Mode: {self.game.mode}, Players: {list(self.game.snakes.keys())}")
-        await self.broadcast({"type": "start", "mode": self.game.mode})
+        
+        if self.ai_player:
+            logger.info(f"🎮 Game started! Mode: vs_ai (difficulty {self.ai_player.difficulty}), Human: Player {3 - self.ai_player_id}, AI: Player {self.ai_player_id}")
+        else:
+            logger.info(f"🎮 Game started! Mode: {self.game.mode}, Players: {list(self.game.snakes.keys())}")
+        
+        await self.broadcast({"type": "start", "mode": self.pending_mode})
         self.game_task = asyncio.create_task(self.game_loop())
 
     async def game_loop(self):
         try:
             while self.game.running:
+                # AI makes its move before update
+                if self.ai_player and self.ai_player_id:
+                    ai_direction = self.ai_player.get_move(self.game, self.ai_player_id)
+                    if ai_direction:
+                        self.game.snakes[self.ai_player_id].set_direction(ai_direction)
+                
                 self.game.update()
                 await self.broadcast_state()
                 if not self.game.running:
                     scores = {pid: s.score for pid, s in self.game.snakes.items()}
                     if self.game.winner:
-                        logger.info(f"🏆 Game over! Player {self.game.winner} wins! Scores: {scores}")
+                        winner_label = f"Player {self.game.winner}"
+                        if self.ai_player and self.game.winner == self.ai_player_id:
+                            winner_label = "AI"
+                        logger.info(f"🏆 Game over! {winner_label} wins! Scores: {scores}")
                     else:
                         logger.info(f"🏁 Game over! Draw. Scores: {scores}")
                     await self.broadcast({"type": "gameover", "winner": self.game.winner})
