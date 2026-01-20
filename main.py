@@ -83,6 +83,21 @@ class Snake:
             if opposites.get(new_dir) != self.direction:
                 self.next_direction = new_dir
 
+    def get_next_head(self) -> tuple[int, int]:
+        """Get where the head will be after processing input and moving."""
+        # Peek at next direction (process input without consuming)
+        next_dir = self.next_direction
+        if self.input_queue:
+            candidate = self.input_queue[0]
+            opposites = {"up": "down", "down": "up", "left": "right", "right": "left"}
+            if opposites.get(candidate) != self.direction:
+                next_dir = candidate
+        
+        hx, hy = self.head()
+        moves = {"up": (0, -1), "down": (0, 1), "left": (-1, 0), "right": (1, 0)}
+        dx, dy = moves[next_dir]
+        return (hx + dx, hy + dy)
+
     def move(self, grow: bool = False):
         self.process_input()
         self.direction = self.next_direction
@@ -138,11 +153,8 @@ class Game:
 
         for snake in self.snakes.values():
             if snake.alive:
-                # Calculate where the snake will move to
-                hx, hy = snake.head()
-                moves = {"up": (0, -1), "down": (0, 1), "left": (-1, 0), "right": (1, 0)}
-                dx, dy = moves[snake.next_direction]
-                next_head = (hx + dx, hy + dy)
+                # Calculate where the snake will actually move to (accounting for input queue)
+                next_head = snake.get_next_head()
                 
                 # Check if next position has food
                 grow = next_head == self.food if self.food else False
