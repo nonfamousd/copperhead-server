@@ -94,15 +94,10 @@ class Game:
         self.reset()
 
     def reset(self):
-        if self.mode == "one_player":
-            self.snakes: dict[int, Snake] = {
-                1: Snake(1, (GRID_WIDTH // 2, GRID_HEIGHT // 2), "right"),
-            }
-        else:
-            self.snakes: dict[int, Snake] = {
-                1: Snake(1, (5, GRID_HEIGHT // 2), "right"),
-                2: Snake(2, (GRID_WIDTH - 6, GRID_HEIGHT // 2), "left"),
-            }
+        self.snakes: dict[int, Snake] = {
+            1: Snake(1, (5, GRID_HEIGHT // 2), "right"),
+            2: Snake(2, (GRID_WIDTH - 6, GRID_HEIGHT // 2), "left"),
+        }
         self.food: Optional[tuple[int, int]] = None
         self.running = False
         self.winner: Optional[int] = None
@@ -159,17 +154,12 @@ class Game:
 
         # Check game over
         alive_snakes = [s for s in self.snakes.values() if s.alive]
-        if self.mode == "one_player":
-            if not alive_snakes:
-                self.running = False
-                self.winner = None
-        else:
-            if len(alive_snakes) <= 1:
-                self.running = False
-                if len(alive_snakes) == 1:
-                    self.winner = alive_snakes[0].player_id
-                else:
-                    self.winner = None  # Draw
+        if len(alive_snakes) <= 1:
+            self.running = False
+            if len(alive_snakes) == 1:
+                self.winner = alive_snakes[0].player_id
+            else:
+                self.winner = None  # Draw
 
     def to_dict(self) -> dict:
         return {
@@ -355,7 +345,7 @@ class GameManager:
                     self.game.snakes[player_id].set_direction(direction)
         elif action == "ready":
             mode = data.get("mode", "two_player")
-            if mode in ("one_player", "two_player", "vs_ai"):
+            if mode in ("two_player", "vs_ai"):
                 self.pending_mode = mode
             
             # Handle AI opponent setup
@@ -373,8 +363,6 @@ class GameManager:
             
             # For vs_ai mode, only need 1 human player
             if self.pending_mode == "vs_ai":
-                required_players = 1
-            elif self.pending_mode == "one_player":
                 required_players = 1
             else:
                 required_players = 2
