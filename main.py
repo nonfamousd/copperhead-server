@@ -51,14 +51,20 @@ class Snake:
 
 
 class Game:
-    def __init__(self):
+    def __init__(self, mode: str = "two_player"):
+        self.mode = mode
         self.reset()
 
     def reset(self):
-        self.snakes: dict[int, Snake] = {
-            1: Snake(1, (5, GRID_HEIGHT // 2), "right"),
-            2: Snake(2, (GRID_WIDTH - 6, GRID_HEIGHT // 2), "left"),
-        }
+        if self.mode == "one_player":
+            self.snakes: dict[int, Snake] = {
+                1: Snake(1, (GRID_WIDTH // 2, GRID_HEIGHT // 2), "right"),
+            }
+        else:
+            self.snakes: dict[int, Snake] = {
+                1: Snake(1, (5, GRID_HEIGHT // 2), "right"),
+                2: Snake(2, (GRID_WIDTH - 6, GRID_HEIGHT // 2), "left"),
+            }
         self.food: Optional[tuple[int, int]] = None
         self.running = False
         self.winner: Optional[int] = None
@@ -108,15 +114,21 @@ class Game:
 
         # Check game over
         alive_snakes = [s for s in self.snakes.values() if s.alive]
-        if len(alive_snakes) <= 1:
-            self.running = False
-            if len(alive_snakes) == 1:
-                self.winner = alive_snakes[0].player_id
-            else:
-                self.winner = None  # Draw
+        if self.mode == "one_player":
+            if not alive_snakes:
+                self.running = False
+                self.winner = None
+        else:
+            if len(alive_snakes) <= 1:
+                self.running = False
+                if len(alive_snakes) == 1:
+                    self.winner = alive_snakes[0].player_id
+                else:
+                    self.winner = None  # Draw
 
     def to_dict(self) -> dict:
         return {
+            "mode": self.mode,
             "grid": {"width": GRID_WIDTH, "height": GRID_HEIGHT},
             "snakes": {pid: s.to_dict() for pid, s in self.snakes.items()},
             "food": self.food,
@@ -131,6 +143,7 @@ class GameManager:
         self.connections: dict[int, WebSocket] = {}
         self.ready: set[int] = set()
         self.game_task: Optional[asyncio.Task] = None
+        self.pending_mode: str = "two_player"
 
     async def connect(self, player_id: int, websocket: WebSocket):
         await websocket.accept()
@@ -143,23 +156,29 @@ class GameManager:
         if self.game_task:
             self.game_task.cancel()
             self.game_task = None
-        self.game.reset()
+        self.game = Game()
+        self.pending_mode = "two_player"
 
     async def handle_message(self, player_id: int, data: dict):
         action = data.get("action")
         if action == "move" and self.game.running:
             direction = data.get("direction")
             if direction in ("up", "down", "left", "right"):
-                self.game.snakes[player_id].set_direction(direction)
+                if player_id in self.game.snakes:
+                    self.game.snakes[player_id].set_direction(direction)
         elif action == "ready":
+            mode = data.get("mode", "two_player")
+            if mode in ("one_player", "two_player"):
+                self.pending_mode = mode
             self.ready.add(player_id)
-            if len(self.ready) == 2 and not self.game.running:
+            required_players = 1 if self.pending_mode == "one_player" else 2
+            if len(self.ready) >= required_players and not self.game.running:
                 await self.start_game()
 
     async def start_game(self):
-        self.game.reset()
+        self.game = Game(mode=self.pending_mode)
         self.game.running = True
-        await self.broadcast({"type": "start"})
+        await self.broadcast({"type": "start", "mode": self.game.mode})
         self.game_task = asyncio.create_task(self.game_loop())
 
     async def game_loop(self):
@@ -219,5 +238,6 @@ async def status():
     return {
         "players_connected": list(manager.connections.keys()),
         "game_running": manager.game.running,
+        "game_mode": manager.game.mode,
         "ready_players": list(manager.ready),
     }

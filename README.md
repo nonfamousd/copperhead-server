@@ -38,12 +38,17 @@ Connect to `ws://localhost:8000/ws/{player_id}` where `player_id` is 1 or 2.
 
 **Client → Server:**
 - `{"action": "move", "direction": "up|down|left|right"}` - Change snake direction
-- `{"action": "ready"}` - Signal ready to start
+- `{"action": "ready", "mode": "one_player|two_player"}` - Signal ready to start (mode optional, defaults to two_player)
 
 **Server → Client:**
 - `{"type": "state", "game": {...}}` - Game state update
-- `{"type": "start"}` - Game started
+- `{"type": "start", "mode": "one_player|two_player"}` - Game started
 - `{"type": "gameover", "winner": 1|2|null}` - Game ended
+
+## Game Modes
+
+- **one_player**: Traditional Snake - maximize your score by eating food
+- **two_player**: Competitive - outlast your opponent
 
 ## License
 
