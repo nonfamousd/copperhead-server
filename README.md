@@ -16,13 +16,21 @@ A server for a 2-player Snake game. CopperHead manages game state and scoring, c
 - uvicorn
 - websockets
 
-## Installation
+## Quick Start with GitHub Codespaces
+
+1. Click the **Code** button on the repository page
+2. Select the **Codespaces** tab
+3. Click **Create codespace on main**
+
+The server will automatically start and be available at port 8000. Codespaces will prompt you to open the forwarded port.
+
+## Local Installation
 
 ```bash
 pip install -r requirements.txt
 ```
 
-## Running the Server
+## Running the Server Locally
 
 ```bash
 uvicorn main:app --reload --host 0.0.0.0 --port 8000
