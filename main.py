@@ -57,18 +57,34 @@ class Snake:
         self.body = [start_pos]
         self.direction = direction
         self.next_direction = direction
+        self.input_queue: list[str] = []
         self.score = 0
         self.alive = True
 
     def head(self) -> tuple[int, int]:
         return self.body[0]
 
-    def set_direction(self, direction: str):
+    def queue_direction(self, direction: str):
+        """Queue a direction change. Only queue if it's valid relative to the last queued or current direction."""
         opposites = {"up": "down", "down": "up", "left": "right", "right": "left"}
-        if direction in opposites and opposites[direction] != self.direction:
-            self.next_direction = direction
+        # Check against the last queued direction, or next_direction if queue is empty
+        last_dir = self.input_queue[-1] if self.input_queue else self.next_direction
+        if direction in opposites and opposites[direction] != last_dir and direction != last_dir:
+            self.input_queue.append(direction)
+            # Limit queue size to prevent flooding
+            if len(self.input_queue) > 3:
+                self.input_queue.pop(0)
+
+    def process_input(self):
+        """Process one input from the queue."""
+        if self.input_queue:
+            new_dir = self.input_queue.pop(0)
+            opposites = {"up": "down", "down": "up", "left": "right", "right": "left"}
+            if opposites.get(new_dir) != self.direction:
+                self.next_direction = new_dir
 
     def move(self, grow: bool = False):
+        self.process_input()
         self.direction = self.next_direction
         hx, hy = self.head()
         moves = {"up": (0, -1), "down": (0, 1), "left": (-1, 0), "right": (1, 0)}
@@ -342,7 +358,7 @@ class GameManager:
             direction = data.get("direction")
             if direction in ("up", "down", "left", "right"):
                 if player_id in self.game.snakes:
-                    self.game.snakes[player_id].set_direction(direction)
+                    self.game.snakes[player_id].queue_direction(direction)
         elif action == "ready":
             mode = data.get("mode", "two_player")
             if mode in ("two_player", "vs_ai"):
@@ -391,7 +407,7 @@ class GameManager:
                 if self.ai_player and self.ai_player_id:
                     ai_direction = self.ai_player.get_move(self.game, self.ai_player_id)
                     if ai_direction:
-                        self.game.snakes[self.ai_player_id].set_direction(ai_direction)
+                        self.game.snakes[self.ai_player_id].queue_direction(ai_direction)
                 
                 self.game.update()
                 await self.broadcast_state()
