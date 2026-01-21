@@ -294,39 +294,30 @@ class GameRoom:
                     self.game.snakes[player_id].queue_direction(direction)
         elif action == "ready":
             mode = data.get("mode", "two_player")
-            if mode in ("two_player", "vs_ai"):
+            # Only the first player sets the mode (not the bot joining later)
+            if len(self.ready) == 0 and mode in ("two_player", "vs_ai"):
                 self.pending_mode = mode
             
             name = data.get("name", f"Player {player_id}")
             self.names[player_id] = name
             
-            if mode == "vs_ai":
+            if mode == "vs_ai" and not self.bot_process:
                 ai_difficulty = data.get("ai_difficulty", 5)
                 ai_difficulty = max(1, min(10, ai_difficulty))
                 self._spawn_bot(ai_difficulty)
-            else:
-                self._stop_bot()
             
             self.ready.add(player_id)
-            logger.info(f"👍 [Room {self.room_id}] {name} ready (mode: {self.pending_mode})")
+            logger.info(f"👍 [Room {self.room_id}] {name} ready (mode: {self.pending_mode}, ready: {len(self.ready)})")
             
-            # For vs_ai, we need to wait for bot to connect (handled by bot joining)
-            # For two_player, check if both players ready
-            if self.pending_mode == "two_player":
-                if len(self.ready) >= 2 and not self.game.running:
-                    await self.start_game()
-                elif len(self.ready) < 2:
-                    if player_id in self.connections:
-                        await self.connections[player_id].send_json({
-                            "type": "waiting",
-                            "message": "Waiting for Player 2..."
-                        })
-            elif self.pending_mode == "vs_ai":
-                # Tell player we're spawning a bot
+            # Start game when we have 2 ready players
+            if len(self.ready) >= 2 and not self.game.running:
+                await self.start_game()
+            elif len(self.ready) < 2:
                 if player_id in self.connections:
+                    msg = "Launching CopperBot..." if self.pending_mode == "vs_ai" else "Waiting for Player 2..."
                     await self.connections[player_id].send_json({
                         "type": "waiting",
-                        "message": "Launching CopperBot..."
+                        "message": msg
                     })
 
     def _spawn_bot(self, difficulty: int):
@@ -343,13 +334,13 @@ class GameRoom:
             server_url = "ws://localhost:8000/ws/"
         
         # Path to copperbot.py (same directory as main.py)
-        script_path = os.path.join(os.path.dirname(__file__), "copperbot.py")
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        script_path = os.path.join(script_dir, "copperbot.py")
         
         try:
             self.bot_process = subprocess.Popen(
                 [sys.executable, script_path, "--server", server_url, "--difficulty", str(difficulty)],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL
+                cwd=script_dir
             )
             logger.info(f"🤖 [Room {self.room_id}] CopperBot L{difficulty} spawned (PID: {self.bot_process.pid})")
         except Exception as e:
