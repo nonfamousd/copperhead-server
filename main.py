@@ -533,6 +533,14 @@ class RoomManager:
                 return room
         return None
     
+    def get_active_rooms(self) -> list[GameRoom]:
+        """Get all rooms with active games."""
+        return [room for room in self.rooms.values() if room.is_active()]
+    
+    def get_room_by_id(self, room_id: int) -> Optional[GameRoom]:
+        """Get a specific room by ID."""
+        return self.rooms.get(room_id)
+    
     def create_room(self) -> Optional[GameRoom]:
         """Create a new room if slots available."""
         for room_id in range(1, self.MAX_ROOMS + 1):
@@ -609,7 +617,7 @@ async def join_game(websocket: WebSocket):
 
 @app.websocket("/ws/observe")
 async def observe_game(websocket: WebSocket):
-    """Observe an active game."""
+    """Observe an active game. Supports switching rooms via messages."""
     room = room_manager.find_active_room()
     
     if not room:
@@ -617,13 +625,59 @@ async def observe_game(websocket: WebSocket):
         return
     
     await room.connect_observer(websocket)
+    current_room = room
     
     try:
         while True:
-            # Observers don't send commands, just keep connection alive
-            await websocket.receive_text()
+            # Handle observer commands (room switching)
+            message = await websocket.receive_text()
+            try:
+                data = json.loads(message)
+                action = data.get("action")
+                
+                if action == "switch_room":
+                    target_room_id = data.get("room_id")
+                    target_room = room_manager.get_room_by_id(target_room_id)
+                    
+                    if target_room and target_room.is_active():
+                        # Disconnect from current room
+                        current_room.disconnect_observer(websocket)
+                        # Connect to new room
+                        current_room = target_room
+                        current_room.observers.append(websocket)
+                        await websocket.send_json({
+                            "type": "observer_joined",
+                            "room_id": current_room.room_id,
+                            "game": current_room.game.to_dict(),
+                            "wins": current_room.wins,
+                            "names": current_room.names
+                        })
+                        logger.info(f"👁️ Observer switched to Room {target_room_id}")
+                    else:
+                        await websocket.send_json({
+                            "type": "error",
+                            "message": f"Room {target_room_id} not available"
+                        })
+                
+                elif action == "get_rooms":
+                    # Send list of active rooms
+                    rooms = room_manager.get_active_rooms()
+                    await websocket.send_json({
+                        "type": "room_list",
+                        "rooms": [
+                            {
+                                "room_id": r.room_id,
+                                "names": r.names,
+                                "wins": r.wins
+                            }
+                            for r in rooms
+                        ],
+                        "current_room": current_room.room_id
+                    })
+            except json.JSONDecodeError:
+                pass
     except WebSocketDisconnect:
-        room.disconnect_observer(websocket)
+        current_room.disconnect_observer(websocket)
 
 
 # Legacy endpoint for backward compatibility
@@ -672,3 +726,19 @@ async def root():
 @app.get("/status")
 async def status():
     return room_manager.get_status()
+
+
+@app.get("/rooms/active")
+async def active_rooms():
+    """Get list of active rooms for observers."""
+    rooms = room_manager.get_active_rooms()
+    return {
+        "rooms": [
+            {
+                "room_id": room.room_id,
+                "names": room.names,
+                "wins": room.wins
+            }
+            for room in rooms
+        ]
+    }
