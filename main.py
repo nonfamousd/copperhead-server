@@ -335,8 +335,9 @@ class AIPlayer:
 class GameRoom:
     """Manages a single game room with two players and optional observers."""
     
-    def __init__(self, room_id: int):
+    def __init__(self, room_id: int, room_manager: "RoomManager" = None):
         self.room_id = room_id
+        self.room_manager = room_manager
         self.game = Game()
         self.connections: dict[int, WebSocket] = {}
         self.observers: list[WebSocket] = []
@@ -461,6 +462,10 @@ class GameRoom:
         
         await self.broadcast({"type": "start", "mode": self.pending_mode, "room_id": self.room_id})
         self.game_task = asyncio.create_task(self.game_loop())
+        
+        # Notify all observers about updated room list
+        if self.room_manager:
+            await self.room_manager.broadcast_room_list_to_all_observers()
 
     async def game_loop(self):
         try:
@@ -480,6 +485,9 @@ class GameRoom:
                         logger.info(f"🏁 [Room {self.room_id}] Game over! Draw.")
                     await self.broadcast({"type": "gameover", "winner": self.game.winner, "wins": self.wins, "names": self.names, "room_id": self.room_id})
                     self.ready.clear()
+                    # Notify all observers about updated room list (game ended)
+                    if self.room_manager:
+                        await self.room_manager.broadcast_room_list_to_all_observers()
                 await asyncio.sleep(TICK_RATE)
         except asyncio.CancelledError:
             pass
@@ -541,11 +549,34 @@ class RoomManager:
         """Get a specific room by ID."""
         return self.rooms.get(room_id)
     
+    async def broadcast_room_list_to_all_observers(self):
+        """Send updated room list to all observers in all rooms."""
+        rooms = self.get_active_rooms()
+        room_data = [
+            {
+                "room_id": r.room_id,
+                "names": r.names,
+                "wins": r.wins
+            }
+            for r in rooms
+        ]
+        
+        for room in self.rooms.values():
+            for ws in room.observers[:]:  # Copy list to avoid modification during iteration
+                try:
+                    await ws.send_json({
+                        "type": "room_list",
+                        "rooms": room_data,
+                        "current_room": room.room_id
+                    })
+                except Exception:
+                    pass  # Observer disconnected, will be cleaned up later
+    
     def create_room(self) -> Optional[GameRoom]:
         """Create a new room if slots available."""
         for room_id in range(1, self.MAX_ROOMS + 1):
             if room_id not in self.rooms or self.rooms[room_id].is_empty():
-                room = GameRoom(room_id)
+                room = GameRoom(room_id, self)
                 self.rooms[room_id] = room
                 logger.info(f"🏠 Room {room_id} created ({len([r for r in self.rooms.values() if not r.is_empty()])} active rooms)")
                 return room
