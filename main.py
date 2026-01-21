@@ -339,7 +339,7 @@ class GameRoom:
         
         try:
             self.bot_process = subprocess.Popen(
-                [sys.executable, script_path, "--server", server_url, "--difficulty", str(difficulty)],
+                [sys.executable, script_path, "--server", server_url, "--difficulty", str(difficulty), "--quiet"],
                 cwd=script_dir
             )
             logger.info(f"🤖 [Room {self.room_id}] CopperBot L{difficulty} spawned (PID: {self.bot_process.pid})")
@@ -535,6 +535,35 @@ class RoomManager:
                 return room
         return None
     
+    def spawn_bot_vs_bot(self, difficulty1: int = 5, difficulty2: int = 5):
+        """Spawn two bots to play against each other for observers to watch."""
+        codespace_name = os.environ.get("CODESPACE_NAME")
+        github_domain = os.environ.get("GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN", "app.github.dev")
+        
+        if codespace_name:
+            server_url = f"wss://{codespace_name}-8000.{github_domain}/ws/"
+        else:
+            server_url = "ws://localhost:8000/ws/"
+        
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        script_path = os.path.join(script_dir, "copperbot.py")
+        
+        try:
+            # Spawn two bots with different difficulties for variety
+            bot1 = subprocess.Popen(
+                [sys.executable, script_path, "--server", server_url, "--difficulty", str(difficulty1), "--quiet"],
+                cwd=script_dir
+            )
+            bot2 = subprocess.Popen(
+                [sys.executable, script_path, "--server", server_url, "--difficulty", str(difficulty2), "--quiet"],
+                cwd=script_dir
+            )
+            logger.info(f"🤖 Spawned bot-vs-bot match: CopperBot L{difficulty1} (PID: {bot1.pid}) vs CopperBot L{difficulty2} (PID: {bot2.pid})")
+            return bot1, bot2
+        except Exception as e:
+            logger.error(f"❌ Failed to spawn bot-vs-bot match: {e}")
+            return None, None
+    
     def get_room(self, room_id: int) -> Optional[GameRoom]:
         return self.rooms.get(room_id)
     
@@ -604,14 +633,22 @@ async def observe_game(websocket: WebSocket):
     in_lobby = False
     
     if not room:
-        # No active games - put observer in lobby
-        room_manager.lobby_observers.append(websocket)
-        in_lobby = True
+        # No active games - spawn two bots to play for the observer
         await websocket.send_json({
             "type": "observer_lobby",
-            "message": "No active games. Waiting for a game to start..."
+            "message": "No active games. Launching bot-vs-bot match..."
         })
-        logger.info(f"👁️ Observer joined lobby (waiting for games)")
+        logger.info(f"👁️ Observer joined - spawning bot-vs-bot match")
+        
+        # Spawn bots with random difficulties for variety
+        import random
+        d1 = random.randint(3, 8)
+        d2 = random.randint(3, 8)
+        room_manager.spawn_bot_vs_bot(d1, d2)
+        
+        # Put observer in lobby - they'll be moved to the room once bots connect
+        room_manager.lobby_observers.append(websocket)
+        in_lobby = True
     else:
         room.observers.append(websocket)
         await websocket.send_json({

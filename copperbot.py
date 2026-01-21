@@ -19,15 +19,20 @@ GRID_HEIGHT = 20
 class RobotPlayer:
     """Autonomous player that connects to CopperHead server and plays using AI."""
     
-    def __init__(self, server_url: str, difficulty: int = 5):
+    def __init__(self, server_url: str, difficulty: int = 5, quiet: bool = False):
         self.server_url = server_url
         self.difficulty = max(1, min(10, difficulty))
+        self.quiet = quiet
         self.player_id = None
         self.game_state = None
         self.running = False
         self.wins = 0
         self.games_played = 0
         self.room_id = None
+    
+    def log(self, msg: str):
+        if not self.quiet:
+            print(msg)
         
     async def connect(self):
         """Connect to the game server using auto-matchmaking."""
@@ -38,19 +43,19 @@ class RobotPlayer:
         url = f"{base_url}/ws/join"
         
         try:
-            print(f"🐍 Connecting to {url}...")
+            self.log(f"Connecting to {url}...")
             self.ws = await websockets.connect(url)
-            print(f"✅ Connected! Waiting for player assignment...")
+            self.log(f"Connected! Waiting for player assignment...")
             return True
         except Exception as e:
-            print(f"❌ Connection failed: {e}")
+            self.log(f"Connection failed: {e}")
             return False
     
     async def play(self):
         """Main game loop with auto-reconnect."""
         while True:
             if not await self.connect():
-                print("Failed to connect to server. Retrying in 3 seconds...")
+                self.log("Failed to connect to server. Retrying in 3 seconds...")
                 await asyncio.sleep(3)
                 continue
                 
@@ -62,10 +67,10 @@ class RobotPlayer:
                     data = json.loads(message)
                     await self.handle_message(data)
             except websockets.ConnectionClosed:
-                print("🔌 Connection closed. Reconnecting in 2 seconds...")
+                self.log("Connection closed. Reconnecting in 2 seconds...")
                 await asyncio.sleep(2)
             except Exception as e:
-                print(f"❌ Error: {e}. Reconnecting in 2 seconds...")
+                self.log(f"Error: {e}. Reconnecting in 2 seconds...")
                 await asyncio.sleep(2)
             finally:
                 self.running = False
@@ -78,7 +83,7 @@ class RobotPlayer:
             # Server assigned us a player ID and room
             self.player_id = data.get("player_id")
             self.room_id = data.get("room_id")
-            print(f"✅ Joined Room {self.room_id} as Player {self.player_id}")
+            self.log(f"Joined Room {self.room_id} as Player {self.player_id}")
             
             # Send ready message
             await self.ws.send(json.dumps({
@@ -86,7 +91,7 @@ class RobotPlayer:
                 "mode": "two_player",
                 "name": f"CopperBot L{self.difficulty}"
             }))
-            print(f"🎮 Ready! Playing at difficulty {self.difficulty}")
+            self.log(f"Ready! Playing at difficulty {self.difficulty}")
         
         elif msg_type == "state":
             self.game_state = data.get("game")
@@ -99,18 +104,18 @@ class RobotPlayer:
                     }))
                     
         elif msg_type == "start":
-            print("🚀 Game started!")
+            self.log("Game started!")
             
         elif msg_type == "gameover":
             self.games_played += 1
             winner = data.get("winner")
             if winner == self.player_id:
                 self.wins += 1
-                print(f"🏆 Won! ({self.wins}/{self.games_played} games)")
+                self.log(f"Won! ({self.wins}/{self.games_played} games)")
             elif winner:
-                print(f"💀 Lost! ({self.wins}/{self.games_played} games)")
+                self.log(f"Lost! ({self.wins}/{self.games_played} games)")
             else:
-                print(f"🤝 Draw! ({self.wins}/{self.games_played} games)")
+                self.log(f"Draw! ({self.wins}/{self.games_played} games)")
             
             # Auto-ready for next game
             await asyncio.sleep(1)
@@ -119,10 +124,10 @@ class RobotPlayer:
                 "mode": "two_player",
                 "name": f"CopperBot L{self.difficulty}"
             }))
-            print("🎮 Ready for next game!")
+            self.log("Ready for next game!")
             
         elif msg_type == "waiting":
-            print("⏳ Waiting for opponent...")
+            self.log("Waiting for opponent...")
     
     def calculate_move(self) -> str | None:
         """Calculate the best move using AI logic. Prioritizes survival."""
@@ -235,14 +240,18 @@ async def main():
                         help="Server WebSocket URL (default: ws://localhost:8000/ws/)")
     parser.add_argument("--difficulty", "-d", type=int, default=5,
                         help="AI difficulty 1-10 (default: 5)")
+    parser.add_argument("--quiet", "-q", action="store_true",
+                        help="Suppress output (for spawned bots)")
     args = parser.parse_args()
     
-    print("🤖 CopperHead Robot Player")
-    print(f"   Server: {args.server}")
-    print(f"   Difficulty: {args.difficulty}")
-    print()
+    robot = RobotPlayer(args.server, args.difficulty, quiet=args.quiet)
     
-    robot = RobotPlayer(args.server, args.difficulty)
+    if not args.quiet:
+        print("CopperHead Robot Player")
+        print(f"   Server: {args.server}")
+        print(f"   Difficulty: {args.difficulty}")
+        print()
+    
     await robot.play()
 
 
