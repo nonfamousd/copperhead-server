@@ -408,6 +408,13 @@ class GameManager:
             
             if len(self.ready) >= required_players and not self.game.running:
                 await self.start_game()
+            elif self.pending_mode == "two_player" and len(self.ready) < required_players:
+                # Notify player they're waiting for opponent
+                if player_id in self.connections:
+                    await self.connections[player_id].send_json({
+                        "type": "waiting",
+                        "message": "Waiting for Player 2..."
+                    })
 
     async def start_game(self):
         # For vs_ai mode, use two_player game setup
