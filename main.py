@@ -597,6 +597,14 @@ class RoomManager:
         # Notify lobby observers and auto-join them to first active game
         if rooms and self.lobby_observers:
             first_room = rooms[0]
+            room_data = [
+                {
+                    "room_id": r.room_id,
+                    "names": r.names,
+                    "wins": r.wins
+                }
+                for r in rooms
+            ]
             for ws in self.lobby_observers[:]:
                 try:
                     # Move from lobby to room
@@ -607,6 +615,12 @@ class RoomManager:
                         "game": first_room.game.to_dict(),
                         "wins": first_room.wins,
                         "names": first_room.names
+                    })
+                    # Also send room list immediately
+                    await ws.send_json({
+                        "type": "room_list",
+                        "rooms": room_data,
+                        "current_room": first_room.room_id
                     })
                     logger.info(f"👁️ Lobby observer joined Room {first_room.room_id}")
                 except Exception:
