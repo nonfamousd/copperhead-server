@@ -34,8 +34,40 @@ class RobotPlayer:
         if not self.quiet:
             print(msg)
         
+    async def wait_for_open_competition(self):
+        """Wait until a competition is accepting players."""
+        import aiohttp
+        
+        base_url = self.server_url.rstrip("/")
+        if base_url.endswith("/ws"):
+            base_url = base_url[:-3]
+        # Convert ws:// to http://
+        http_url = base_url.replace("ws://", "http://").replace("wss://", "https://")
+        
+        while True:
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(f"{http_url}/competition") as resp:
+                        if resp.status == 200:
+                            data = await resp.json()
+                            state = data.get("state", "")
+                            if state == "waiting_for_players":
+                                self.log("Competition open - joining...")
+                                return True
+                            else:
+                                self.log(f"Competition in progress ({state}), waiting...")
+                        else:
+                            self.log(f"Server not ready (status {resp.status}), waiting...")
+            except Exception as e:
+                self.log(f"Cannot reach server: {e}, waiting...")
+            
+            await asyncio.sleep(5)  # Wait 5 seconds before retrying
+    
     async def connect(self):
         """Connect to the game server using auto-matchmaking."""
+        # Wait for competition to be open
+        await self.wait_for_open_competition()
+        
         # Use the /join endpoint for auto-matchmaking
         base_url = self.server_url.rstrip("/")
         if base_url.endswith("/ws"):
@@ -76,6 +108,14 @@ class RobotPlayer:
     async def handle_message(self, data: dict):
         """Handle incoming server messages."""
         msg_type = data.get("type")
+        
+        if msg_type == "error":
+            # Server rejected us - likely competition in progress
+            error_msg = data.get("message", "Unknown error")
+            self.log(f"Server error: {error_msg}")
+            # Connection will be closed by server, we'll exit gracefully
+            self.running = False
+            return
         
         if msg_type == "joined":
             # Server assigned us a player ID and room
@@ -151,6 +191,15 @@ class RobotPlayer:
             self.game_state = None  # Reset game state for new match
             opponent = data.get("opponent", "Opponent")
             self.log(f"🎮 Assigned to Arena {self.room_id} as Player {self.player_id} vs {opponent}")
+        
+        elif msg_type == "competition_complete":
+            # Competition is over - we won!
+            champion = data.get("champion", {}).get("name", "Unknown")
+            self.log(f"🏆 Competition complete! Champion: {champion}")
+            self.log("Terminating...")
+            self.running = False
+            await self.ws.close()
+            raise SystemExit(0)
             
         elif msg_type == "waiting":
             self.log("Waiting for opponent...")

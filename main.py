@@ -91,10 +91,11 @@ class CompetitionState(Enum):
 
 class PlayerInfo:
     """Track a player in the competition."""
-    def __init__(self, player_uid: str, name: str, websocket: WebSocket):
+    def __init__(self, player_uid: str, name: str, websocket: WebSocket, is_bot: bool = False):
         self.uid = player_uid  # Unique ID across competition
         self.name = name
         self.websocket = websocket
+        self.is_bot = is_bot  # True if this is a CopperBot
         self.match_wins = 0  # Matches won in competition
         self.game_points = 0  # Total game points across all matches
         self.opponent_points = 0  # Opponent's total points (for tiebreaker)
@@ -128,6 +129,7 @@ class Competition:
         self.current_bye_uid: Optional[str] = None  # Player with Bye in current round
         self._lock = asyncio.Lock()
         self._next_uid = 1
+        self.reset_start_time: Optional[float] = None  # Track when reset countdown started
     
     def _generate_uid(self) -> str:
         uid = f"P{self._next_uid}"
@@ -136,6 +138,10 @@ class Competition:
     
     async def start_waiting(self):
         """Initialize competition to waiting state."""
+        # Clear all rooms - bots will disconnect themselves when they receive
+        # competition_complete or when their websocket closes
+        room_manager.clear_all_rooms()
+        
         self.state = CompetitionState.WAITING_FOR_PLAYERS
         self.players.clear()
         self.current_round = 0
@@ -143,6 +149,7 @@ class Competition:
         self.match_results.clear()
         self.champion_uid = None
         self.current_bye_uid = None
+        self.reset_start_time = None
         self._next_uid = 1
         logger.info(f"🏆 Competition waiting for {config.arenas * 2} players")
     
@@ -159,7 +166,8 @@ class Competition:
                 return None
             
             uid = self._generate_uid()
-            player = PlayerInfo(uid, name, websocket)
+            is_bot = name.startswith("CopperBot")
+            player = PlayerInfo(uid, name, websocket, is_bot=is_bot)
             self.players[uid] = player
             
             logger.info(f"📝 {name} ({uid}) registered ({len(self.players)}/{self.required_players()})")
@@ -189,7 +197,15 @@ class Competition:
                 # Mark as eliminated - opponent wins by forfeit
                 player.eliminated = True
                 logger.info(f"🚪 {player.name} ({uid}) disconnected - forfeit")
-                # The room will handle the forfeit logic
+                
+                # If this player has a Bye, they forfeit it and we need to handle round advancement
+                if self.current_bye_uid == uid:
+                    logger.info(f"🎫 Bye player {player.name} disconnected - eliminated")
+                    self.current_bye_uid = None
+                    # Check if this was the last match needed to advance
+                    if self.match_results and len(self.match_results[self.current_round - 1]) >= len(self.rounds[self.current_round - 1]):
+                        await self._advance_round()
+                # The room will handle the forfeit logic for active games
     
     async def _broadcast_lobby_status(self):
         """Send lobby status to all waiting players."""
@@ -245,6 +261,9 @@ class Competition:
             # Connect players to their room
             await room.connect_competition_player(1, player1)
             await room.connect_competition_player(2, player2)
+        
+        # Notify observers in lobby about new rooms so they get reassigned
+        await room_manager.broadcast_room_list_to_all_observers()
     
     async def report_match_complete(self, room: "GameRoom", winner_uid: str, 
                                      p1_uid: str, p2_uid: str, p1_points: int, p2_points: int):
@@ -273,6 +292,8 @@ class Competition:
                 loser.game_points += p2_points if winner_uid == p1_uid else p1_points
                 loser.opponent_points += p1_points if winner_uid == p1_uid else p2_points
                 loser.eliminated = True
+                loser.current_room = None  # Prevent disconnect from affecting new rooms
+                loser.current_player_id = None
                 
                 logger.info(f"🏆 Match complete: {winner.name} defeats {loser.name} ({p1_points}-{p2_points})")
                 
@@ -293,7 +314,7 @@ class Competition:
         
         logger.info(f"📊 Round {self.current_round} complete. Winners: {[self.players[uid].name for uid in winners]}")
         
-        # Clear all rooms from previous round before proceeding
+        # Clear all rooms from previous round
         room_manager.clear_all_rooms()
         
         # Reset bye for new round
@@ -301,8 +322,10 @@ class Competition:
         
         if len(winners) == 1:
             # We have a champion!
+            import time
             self.champion_uid = winners[0]
             self.state = CompetitionState.COMPLETE
+            self.reset_start_time = time.time()  # Start countdown immediately
             champion = self.players[self.champion_uid]
             logger.info(f"🎉 Competition complete! Champion: {champion.name}")
             await self._broadcast_competition_complete()
@@ -383,7 +406,7 @@ class Competition:
     
     async def _schedule_reset(self):
         """Wait and then reset competition."""
-        self.state = CompetitionState.RESETTING
+        # State stays COMPLETE (set by caller), countdown already started
         logger.info(f"⏳ Competition resetting in {config.reset_delay} seconds...")
         await asyncio.sleep(config.reset_delay)
         await self.start_waiting()
@@ -398,9 +421,16 @@ class Competition:
     
     def get_status(self) -> dict:
         """Get current competition status."""
+        import time
         bye_player_name = None
         if self.current_bye_uid and self.current_bye_uid in self.players:
             bye_player_name = self.players[self.current_bye_uid].name
+        
+        # Calculate remaining reset time
+        reset_in = 0
+        if self.reset_start_time and self.state == CompetitionState.COMPLETE:
+            elapsed = time.time() - self.reset_start_time
+            reset_in = max(0, int(config.reset_delay - elapsed))
         
         return {
             "state": self.state.value,
@@ -410,7 +440,8 @@ class Competition:
             "required": self.required_players(),
             "champion": self.players[self.champion_uid].name if self.champion_uid else None,
             "points_to_win": config.points_to_win,
-            "bye_player": bye_player_name
+            "bye_player": bye_player_name,
+            "reset_in": reset_in
         }
     
     def get_remaining_matches(self) -> int:
@@ -498,9 +529,10 @@ class Game:
         self.reset()
 
     def reset(self):
+        # Snakes start on different rows to avoid head-on collision
         self.snakes: dict[int, Snake] = {
             1: Snake(1, (5, config.grid_height // 2), "right"),
-            2: Snake(2, (config.grid_width - 6, config.grid_height // 2), "left"),
+            2: Snake(2, (config.grid_width - 6, config.grid_height // 2 + 1), "left"),
         }
         self.food: Optional[tuple[int, int]] = None
         self.running = False
@@ -778,9 +810,29 @@ class GameRoom:
             self.ready.add(player_id)
             logger.info(f"👍 [Room {self.room_id}] {name} ready (mode: {self.pending_mode}, ready: {len(self.ready)})")
             
-            # Start game when we have 2 ready players
+            # Start game when we have 2 ready players AND competition is in progress
+            # (Don't start games while waiting for players to fill the competition)
             if len(self.ready) >= 2 and not self.game.running:
-                await self.start_game()
+                if competition.state == CompetitionState.IN_PROGRESS:
+                    await self.start_game()
+                else:
+                    # Check if all players are now ready - start competition if so
+                    total_ready = sum(len(r.ready) for r in room_manager.rooms.values())
+                    max_players = config.arenas * 2
+                    if total_ready >= max_players:
+                        # Start the competition, which will start all games
+                        await _start_competition_from_rooms()
+                        # Note: _start_competition_from_rooms already starts all room games
+                    else:
+                        # Still waiting for more players
+                        for pid, ws in self.connections.items():
+                            try:
+                                await ws.send_json({
+                                    "type": "waiting",
+                                    "message": f"Waiting for competition to start ({total_ready}/{max_players} players)"
+                                })
+                            except Exception:
+                                pass
             elif len(self.ready) < 2:
                 if player_id in self.connections:
                     msg = "Launching CopperBot..." if self.pending_mode == "vs_ai" else "Waiting for Player 2..."
@@ -827,6 +879,13 @@ class GameRoom:
         # Notify all observers about updated room list
         if self.room_manager:
             await self.room_manager.broadcast_room_list_to_all_observers()
+        
+        # Check if competition should start (all rooms have 2 ready players)
+        if competition.state == CompetitionState.WAITING_FOR_PLAYERS:
+            total_ready = sum(len(r.ready) for r in room_manager.rooms.values())
+            max_players = config.arenas * 2
+            if total_ready >= max_players:
+                await _start_competition_from_rooms()
 
     async def game_loop(self):
         try:
@@ -842,6 +901,7 @@ class GameRoom:
                     
                     # Check for match completion (first to points_to_win)
                     match_winner = self._check_match_complete()
+                    logger.info(f"🔍 [Room {self.room_id}] Match check: wins={self.wins}, points_to_win={config.points_to_win}, match_winner={match_winner}")
                     
                     await self.broadcast({"type": "gameover", "winner": self.game.winner, "wins": self.wins, "names": self.names, "room_id": self.room_id, "points_to_win": config.points_to_win})
                     
@@ -858,6 +918,7 @@ class GameRoom:
                         return  # Exit game loop - match is done
                     else:
                         # Continue match - start next game after brief delay
+                        logger.info(f"🔄 [Room {self.room_id}] No match winner yet, starting next game...")
                         await asyncio.sleep(2)
                         await self._start_next_game()
                         
@@ -1018,6 +1079,12 @@ class RoomManager:
             for r in rooms
         ]
         
+        # Include round info so observers can update their display
+        round_info = {
+            "round": competition.current_round,
+            "total_rounds": competition._calculate_total_rounds()
+        }
+        
         # Notify observers in rooms
         for room in self.rooms.values():
             for ws in room.observers[:]:  # Copy list to avoid modification during iteration
@@ -1025,7 +1092,8 @@ class RoomManager:
                     await ws.send_json({
                         "type": "room_list",
                         "rooms": room_data,
-                        "current_room": room.room_id
+                        "current_room": room.room_id,
+                        **round_info
                     })
                 except Exception:
                     pass  # Observer disconnected, will be cleaned up later
@@ -1057,7 +1125,8 @@ class RoomManager:
                     await ws.send_json({
                         "type": "room_list",
                         "rooms": room_data,
-                        "current_room": first_room.room_id
+                        "current_room": first_room.room_id,
+                        **round_info
                     })
                     logger.info(f"👁️ Lobby observer joined Room {first_room.room_id}")
                 except Exception:
@@ -1070,7 +1139,8 @@ class RoomManager:
                     await ws.send_json({
                         "type": "room_list",
                         "rooms": [],
-                        "current_room": None
+                        "current_room": None,
+                        **round_info
                     })
                 except Exception:
                     pass
@@ -1134,8 +1204,20 @@ class RoomManager:
     
     def clear_all_rooms(self):
         """Clear all rooms for next round. Called between competition rounds."""
+        # Collect all observers before clearing rooms - they need to be moved to lobby
+        all_observers = []
         for room in self.rooms.values():
-            room._stop_bot()
+            all_observers.extend(room.observers)
+            room.observers.clear()
+        
+        # Move observers to lobby so they can be reassigned to new rooms
+        self.lobby_observers.extend(all_observers)
+        if all_observers:
+            logger.info(f"👁️ Moved {len(all_observers)} observer(s) to lobby for next round")
+        
+        for room in self.rooms.values():
+            # Don't stop bots here - winners need to stay connected for Round 2+
+            # Losing bots are terminated when they receive match_complete
             if room.game_task:
                 room.game_task.cancel()
         self.rooms.clear()
@@ -1159,10 +1241,13 @@ class RoomManager:
             "competition_state": competition.state.value,
             "total_rooms": len(self.rooms),
             "speed": config.tick_rate,
+            "grid_width": config.grid_width,
+            "grid_height": config.grid_height,
             "rooms": [
                 {
                     "room_id": room.room_id,
                     "players": list(room.connections.keys()),
+                    "ready": list(room.ready),
                     "observers": len(room.observers),
                     "game_running": room.game.running,
                     "waiting_for_player": room.is_waiting_for_player(),
@@ -1223,11 +1308,6 @@ async def join_game(websocket: WebSocket):
         "player_id": player_id
     })
     
-    # Check if competition should start (all slots filled)
-    total_players = sum(len(r.connections) for r in room_manager.rooms.values())
-    if total_players >= max_players and competition.state == CompetitionState.WAITING_FOR_PLAYERS:
-        await _start_competition_from_rooms()
-    
     try:
         while True:
             data = await websocket.receive_json()
@@ -1245,6 +1325,8 @@ async def join_game(websocket: WebSocket):
         if current_room:
             current_player_id = player_info.current_player_id if player_info else player_id
             await current_room.disconnect_player(current_player_id)
+        # Also notify competition of disconnect (handles Bye player forfeits)
+        await competition.unregister_player(uid)
         room_manager.cleanup_empty_rooms()
 
 
@@ -1261,6 +1343,10 @@ async def _start_competition_from_rooms():
             p2_uid = room.player_uids.get(2)
             if p1_uid and p2_uid:
                 pairings.append((p1_uid, p2_uid))
+                # Reset room scores for fresh competition start
+                room.wins = {1: 0, 2: 0}
+                room.match_complete = False
+                room.match_reported = False
                 # Register players with competition - include their websockets
                 p1_ws = room.connections.get(1)
                 p2_ws = room.connections.get(2)
@@ -1276,6 +1362,11 @@ async def _start_competition_from_rooms():
     competition.match_results.append([])
     
     logger.info(f"🏆 Competition started! Round 1 with {len(pairings)} matches")
+    
+    # Start games in all rooms that have 2 ready players
+    for room in room_manager.rooms.values():
+        if len(room.ready) >= 2 and not room.game.running:
+            await room.start_game()
 
 
 @app.websocket("/ws/observe")
@@ -1359,7 +1450,9 @@ async def observe_game(websocket: WebSocket):
                             }
                             for r in rooms
                         ],
-                        "current_room": current_room.room_id if current_room else None
+                        "current_room": current_room.room_id if current_room else None,
+                        "round": competition.current_round,
+                        "total_rounds": competition._calculate_total_rounds()
                     })
             except json.JSONDecodeError:
                 pass
@@ -1496,7 +1589,7 @@ async def competition_status():
 
 
 @app.post("/add_bot")
-async def add_bot():
+async def add_bot(difficulty: int = None):
     """Add a CopperBot to the first available room."""
     # Find a room waiting for a player
     room = room_manager.find_waiting_room()
@@ -1510,8 +1603,9 @@ async def add_bot():
         if not room:
             return {"success": False, "message": "Cannot create room"}
     
-    # Spawn a bot with random difficulty
-    difficulty = random.randint(1, 10)
+    # Use provided difficulty or random
+    if difficulty is None or difficulty < 1 or difficulty > 10:
+        difficulty = random.randint(1, 10)
     room._spawn_bot(difficulty)
     
     return {"success": True, "message": f"CopperBot L{difficulty} added to Room {room.room_id}"}
