@@ -812,7 +812,9 @@ class GameRoom:
             
             # Start game when we have 2 ready players AND competition is in progress
             # (Don't start games while waiting for players to fill the competition)
-            if len(self.ready) >= 2 and not self.game.running:
+            # Also check that game_task isn't running (handles transition between games in a match)
+            game_task_active = self.game_task and not self.game_task.done()
+            if len(self.ready) >= 2 and not self.game.running and not game_task_active:
                 if competition.state == CompetitionState.IN_PROGRESS:
                     await self.start_game()
                 else:
@@ -868,6 +870,11 @@ class GameRoom:
             logger.error(f"❌ [Room {self.room_id}] Failed to spawn CopperBot: {e}")
 
     async def start_game(self):
+        # Guard against duplicate start_game calls (e.g., during game-to-game transitions)
+        if self.game.running or (self.game_task and not self.game_task.done()):
+            logger.warning(f"⚠️ [Room {self.room_id}] start_game called but game already running or task active, ignoring")
+            return
+        
         self.game = Game(mode="two_player")
         self.game.running = True
         
