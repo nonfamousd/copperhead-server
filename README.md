@@ -1,9 +1,12 @@
 # CopperHead Server
 
-A server for a 2-player Snake game. The CopperHead server manages game state and multi-round knockout competitions, communicating with player clients via WebSocket API.
+A server for a 2-player Snake game. The CopperHead server manages game state and multi-round knockout competitions, communicating with human and robot clients via WebSocket API. The server also supports launching the default "CopperBot" AI-controlled opponent, and and observer mode for spectating games.
 
-This repo only provides the server for hosting and managing the game. 
-[Play Online](https://revodavid.github.io/copperhead-client/) with the  [copperhead-client](https://github.com/revodavid/copperhead-client). The server also support AI-controlled opponents and observer mode for spectating games.
+NOTE: This repo only provides the server for hosting and managing the game. 
+
+* To **play the game** against friends or bots, launch the [CopperHead client](https://revodavid.github.io/copperhead-client/). 
+  - You can also launch the [copperhead-client](https://github.com/revodavid/copperhead-client) from this repository on your own Web server or via GitHub CodeSpaces.
+  - The server provides basic bot opponents, but better strategies are possible. To **build your own bot opponent**, see [Building-Your-Own-Bot.md](Building-Your-Own-Bot.md) for instructions.
 
 ## Game Rules
 
@@ -27,7 +30,7 @@ A Match of CopperHead consists of multiple games. The first player to reach a pr
 
 The CopperHead server is designed to host a knockout tournament among human and/or AI players to determine the Championship winner.
 
-See [Competition Logic](competion-logic.md) for full details on how competitions are structured and run.
+See [Competition Logic](competition-logic.md) for full details on how competitions are structured and run.
 
 ## Server Setup
 
