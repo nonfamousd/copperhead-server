@@ -1,14 +1,15 @@
 # CopperHead Server
 
-Version: 3.0.1
+Version: 3.1.0
 
-A server for a 2-player Snake game. The CopperHead server manages game state and multi-round knockout competitions, communicating with human and robot clients via WebSocket API. The server also supports launching the default "CopperBot" AI-controlled opponent, and and observer mode for spectating games.
+A server for a 2-player Snake game. The CopperHead server manages game state and multi-round knockout competitions, communicating with human and robot clients via WebSocket API. The server also supports adding instances of the default "CopperBot" AI-controlled opponent to the competition, and an observer mode for spectating games.
 
 NOTE: This repo only provides the server for hosting and managing the game. 
 
 * To **play the game** against friends or bots, launch the [CopperHead client](https://revodavid.github.io/copperhead-client/). 
   - You can also launch the [copperhead-client](https://github.com/revodavid/copperhead-client) from this repository on your own Web server or via GitHub CodeSpaces.
-  - The server provides basic bot opponents, but better strategies are possible. To **build your own bot opponent**, see [Building-Your-Own-Bot.md](Building-Your-Own-Bot.md) for instructions.
+
+The server provides basic bot opponents, but better strategies are possible. To **build your own bot opponent**, see [Building-Your-Own-Bot.md](Building-Your-Own-Bot.md) for instructions.
 
 ## Game Rules
 
@@ -126,20 +127,26 @@ For local servers, use: `ws://localhost:8000/ws`
 ### Messages
 
 **Client → Server:**
-- `{"action": "ready", "mode": "vs_ai|two_player", "name": "PlayerName"}` - Ready to play
+- `{"action": "ready", "name": "PlayerName"}` - Ready to play
 - `{"action": "move", "direction": "up|down|left|right"}` - Change snake direction
-- `{"action": "set_ai_difficulty", "ai_difficulty": 1-10}` - Change AI difficulty
 
 **Server → Client:**
 - `{"type": "joined", "room_id": 1, "player_id": 1}` - Joined a room
 - `{"type": "state", "game": {...}, "wins": {...}, "names": {...}}` - Game state update
-- `{"type": "start", "mode": "..."}` - Game started
+- `{"type": "start"}` - Game started
 - `{"type": "gameover", "winner": 1|2|null}` - Game ended
 
-## Game Modes
+## Spawning Bots
 
-- **vs_ai**: Play against ServerBot (adjustable difficulty 1-10)
-- **two_player**: Play against another human or CopperBot
+Use the `/add_bot` API endpoint to spawn CopperBot opponents:
+
+```bash
+# Spawn a bot with random difficulty (1-10)
+curl -X POST "http://localhost:8000/add_bot"
+
+# Spawn a bot with specific difficulty
+curl -X POST "http://localhost:8000/add_bot?difficulty=7"
+```
 
 ## License
 

@@ -134,26 +134,26 @@ if food and new_x == food[0] and new_y == food[1]:
 
 There are two ways to test your bot:
 
-#### Option A: Test against a server-spawned CopperBot
+#### Option A: Test against a CopperBot using the server API
 
-This is the easiest way to quickly test your bot. Modify your bot's ready message to use `vs_ai` mode:
+This is the easiest way to quickly test your bot. Use the server's `/add_bot` API to spawn an opponent:
 
-```python
-await self.ws.send(json.dumps({
-    "action": "ready",
-    "mode": "vs_ai",  # Server will spawn a CopperBot opponent
-    "name": f"MyBot L{self.difficulty}"
-}))
+```bash
+# First, spawn a CopperBot opponent
+curl -X POST "http://localhost:8000/add_bot?difficulty=5"
+
+# Then run your bot
+python mysnakebot.py --server ws://localhost:8000/ws/ --difficulty 5
 ```
 
-When you connect, the server will automatically spawn a CopperBot to play against you. This is great for rapid testing without needing to run two bot instances.
+Or from the client UI, click "Add Bot" to spawn a CopperBot, then run your bot to join as the second player.
 
 #### Option B: Test in a competition
 
 For tournament-style testing with multiple bots:
 
 1. Start a CopperHead server (or connect to an existing one)
-2. Run your bot with `two_player` mode (the default):
+2. Run your bot:
    ```bash
    python mysnakebot.py --server ws://localhost:8000/ws/ --difficulty 5
    ```

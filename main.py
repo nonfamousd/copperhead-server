@@ -757,7 +757,6 @@ class GameRoom:
         self.observers: list[WebSocket] = []
         self.ready: set[int] = set()
         self.game_task: Optional[asyncio.Task] = None
-        self.pending_mode: str = "two_player"
         self.bot_process: Optional[subprocess.Popen] = None
         self.wins: dict[int, int] = {1: 0, 2: 0}
         self.names: dict[int, str] = {1: "Player 1", 2: "Player 2"}
@@ -888,7 +887,6 @@ class GameRoom:
         # Only reset room state if match is NOT complete (preserve completed match data)
         if not self.match_complete:
             self.game = Game()
-            self.pending_mode = "two_player"
             self.wins = {1: 0, 2: 0}
             self.names = {1: "Player 1", 2: "Player 2"}
         
@@ -918,21 +916,10 @@ class GameRoom:
                 if player_id in self.game.snakes:
                     self.game.snakes[player_id].queue_direction(direction)
         elif action == "ready":
-            mode = data.get("mode", "two_player")
-            # Only the first player sets the mode (not the bot joining later)
-            if len(self.ready) == 0 and mode in ("two_player", "vs_ai"):
-                self.pending_mode = mode
-            
             name = data.get("name", f"Player {player_id}")
             self.names[player_id] = name
-            
-            if mode == "vs_ai" and not self.bot_process:
-                ai_difficulty = data.get("ai_difficulty", 5)
-                ai_difficulty = max(1, min(10, ai_difficulty))
-                self._spawn_bot(ai_difficulty)
-            
             self.ready.add(player_id)
-            logger.info(f"👍 [Room {self.room_id}] {name} ready (mode: {self.pending_mode}, ready: {len(self.ready)})")
+            logger.info(f"👍 [Room {self.room_id}] {name} ready ({len(self.ready)}/2 players)")
             
             # Start game when we have 2 ready players AND competition is in progress
             # (Don't start games while waiting for players to fill the competition)
@@ -961,10 +948,9 @@ class GameRoom:
                                 pass
             elif len(self.ready) < 2:
                 if player_id in self.connections:
-                    msg = "Launching CopperBot..." if self.pending_mode == "vs_ai" else "Waiting for Player 2..."
                     await self.connections[player_id].send_json({
                         "type": "waiting",
-                        "message": msg
+                        "message": "Waiting for Player 2..."
                     })
 
     def _spawn_bot(self, difficulty: int):
@@ -1002,9 +988,9 @@ class GameRoom:
         self.game = Game(mode="two_player")
         self.game.running = True
         
-        logger.info(f"🎮 [Room {self.room_id}] Game started! Mode: {self.pending_mode}")
+        logger.info(f"🎮 [Room {self.room_id}] Game started!")
         
-        await self.broadcast({"type": "start", "mode": self.pending_mode, "room_id": self.room_id})
+        await self.broadcast({"type": "start", "mode": "two_player", "room_id": self.room_id})
         self.game_task = asyncio.create_task(self.game_loop())
         
         # Notify all observers about updated room list
