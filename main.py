@@ -78,14 +78,18 @@ async def startup_event():
     logger.info(f"   Grid: {config.grid_width}x{config.grid_height}, Tick rate: {config.tick_rate}s")
     logger.info(f"   Arenas: {config.arenas}, Points to win: {config.points_to_win}")
     
-    # Only show connection info if not launched via start.py (which shows its own banner)
+    # Detect Codespaces environment
+    codespace_name = os.environ.get("CODESPACE_NAME")
+    github_domain = os.environ.get("GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN", "app.github.dev")
+    
+    if codespace_name:
+        ws_url = f"wss://{codespace_name}-8000.{github_domain}/ws/"
+    else:
+        ws_url = "ws://localhost:8000/ws/"
+    
+    # Only show full connection info if not launched via start.py (which shows its own banner)
     if not os.environ.get("COPPERHEAD_QUIET_STARTUP"):
-        # Detect Codespaces environment
-        codespace_name = os.environ.get("CODESPACE_NAME")
-        github_domain = os.environ.get("GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN", "app.github.dev")
-        
         if codespace_name:
-            ws_url = f"wss://{codespace_name}-8000.{github_domain}/ws/"
             logger.info("")
             logger.info("=" * 60)
             logger.info("📡 CLIENT CONNECTION URL:")
@@ -103,6 +107,13 @@ async def startup_event():
     
     # Initialize competition
     await competition.start_waiting()
+    
+    # Show URL reminder at the bottom so it's visible after all startup messages
+    logger.info("")
+    logger.info(f"📡 Server URL: {ws_url}")
+    logger.info(f"🎮 Client: https://revodavid.github.io/copperhead-client/")
+    if codespace_name:
+        logger.info(f"⚠️  Remember to make port 8000 PUBLIC in the Ports tab!")
 
 
 class CompetitionState(Enum):
