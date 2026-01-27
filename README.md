@@ -78,29 +78,33 @@ Clients may join the server as observers to spectate active games. Observers do 
 2. Select the **Codespaces** tab
 3. Click **Create codespace on main**
 
-The server will automatically start on port 8000.
+The server will automatically start and display connection instructions in the terminal.
 
-### Finding Your Server URL for Clients
+### Connecting Your Client
 
-1. Open the **Ports** tab in the bottom panel of your Codespace
-2. Find port **8000** in the list
-3. **Right-click** on port 8000 → **Port Visibility** → **Public** (required for external connections)
-4. Copy the forwarded address (it looks like `https://your-codespace-name-8000.app.github.dev`)
-5. Use this URL format for the client:
-   ```
-   wss://your-codespace-name-8000.app.github.dev/ws
-   ```
+When the server starts, you'll see a banner with instructions like this:
 
-**Example:** If your Codespace URL is:
 ```
-https://bookish-fortnight-p7wqx7rw7h96w7-8000.app.github.dev
-```
-Then your client Server URL is:
-```
-wss://bookish-fortnight-p7wqx7rw7h96w7-8000.app.github.dev/ws
+============================================================
+       🐍 COPPERHEAD SNAKE GAME SERVER 🐍
+============================================================
+
+📡 HOW TO PLAY:
+
+   Step 1: Open the game client in your browser:
+          https://revodavid.github.io/copperhead-client/
+
+   Step 2: Paste this Server URL into the client:
+
+          wss://your-codespace-name-8000.app.github.dev/ws/
+
+   Step 3: ⚠️  IMPORTANT - Make your port PUBLIC:
+          • Click the Ports tab in the bottom panel
+          • Right-click on port 8000
+          • Select Port Visibility → Public
 ```
 
-**Note:** Use `wss://` (not `ws://`) for Codespaces since it uses HTTPS.
+Just follow these steps to connect and play!
 
 ## Local Installation
 

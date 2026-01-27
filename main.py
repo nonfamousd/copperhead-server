@@ -78,26 +78,28 @@ async def startup_event():
     logger.info(f"   Grid: {config.grid_width}x{config.grid_height}, Tick rate: {config.tick_rate}s")
     logger.info(f"   Arenas: {config.arenas}, Points to win: {config.points_to_win}")
     
-    # Detect Codespaces environment
-    codespace_name = os.environ.get("CODESPACE_NAME")
-    github_domain = os.environ.get("GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN", "app.github.dev")
-    
-    if codespace_name:
-        ws_url = f"wss://{codespace_name}-8000.{github_domain}/ws/"
-        logger.info("")
-        logger.info("=" * 60)
-        logger.info("📡 CLIENT CONNECTION URL:")
-        logger.info(f"   {ws_url}")
-        logger.info("")
-        logger.info("⚠️  IMPORTANT: Make port 8000 public!")
-        logger.info("   1. Open the Ports tab (bottom panel)")
-        logger.info("   2. Right-click port 8000 → Port Visibility → Public")
-        logger.info("=" * 60)
-        logger.info("")
-    else:
-        logger.info("")
-        logger.info("📡 Client connection URL: ws://localhost:8000/ws/")
-        logger.info("")
+    # Only show connection info if not launched via start.py (which shows its own banner)
+    if not os.environ.get("COPPERHEAD_QUIET_STARTUP"):
+        # Detect Codespaces environment
+        codespace_name = os.environ.get("CODESPACE_NAME")
+        github_domain = os.environ.get("GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN", "app.github.dev")
+        
+        if codespace_name:
+            ws_url = f"wss://{codespace_name}-8000.{github_domain}/ws/"
+            logger.info("")
+            logger.info("=" * 60)
+            logger.info("📡 CLIENT CONNECTION URL:")
+            logger.info(f"   {ws_url}")
+            logger.info("")
+            logger.info("⚠️  IMPORTANT: Make port 8000 public!")
+            logger.info("   1. Open the Ports tab (bottom panel)")
+            logger.info("   2. Right-click port 8000 → Port Visibility → Public")
+            logger.info("=" * 60)
+            logger.info("")
+        else:
+            logger.info("")
+            logger.info("📡 Client connection URL: ws://localhost:8000/ws/")
+            logger.info("")
     
     # Initialize competition
     await competition.start_waiting()
