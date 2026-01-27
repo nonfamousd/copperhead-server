@@ -221,7 +221,25 @@ class RobotPlayer:
             
         head = my_snake["body"][0]
         current_dir = my_snake.get("direction", "right")
-        food = self.game_state.get("food")
+        
+        # Get food - support both old API (food) and new API (foods)
+        foods = self.game_state.get("foods", [])
+        if not foods and self.game_state.get("food"):
+            # Backward compatibility with old API
+            old_food = self.game_state.get("food")
+            foods = [{"x": old_food[0], "y": old_food[1], "type": "apple"}]
+        
+        # Find the nearest food (prefer apples)
+        nearest_food = None
+        nearest_dist = float('inf')
+        for food in foods:
+            dist = abs(head[0] - food["x"]) + abs(head[1] - food["y"])
+            # Prefer apples (they make us grow)
+            if food.get("type") == "apple":
+                dist -= 0.5  # Slight preference for apples
+            if dist < nearest_dist:
+                nearest_dist = dist
+                nearest_food = food
         
         # Build set of dangerous positions (all snake bodies)
         dangerous = set()
@@ -286,17 +304,19 @@ class RobotPlayer:
             score = 0
             new_x, new_y = move["x"], move["y"]
             
-            # Big bonus for capturing food
-            if food and new_x == food[0] and new_y == food[1]:
-                score += 1000  # Always prioritize eating
+            # Big bonus for capturing any food
+            for food in foods:
+                if new_x == food["x"] and new_y == food["y"]:
+                    score += 1000  # Always prioritize eating
+                    break
             
             # Prioritize moves that don't trap us (have escape routes)
             escape_routes = count_safe_neighbors(new_x, new_y)
             score += escape_routes * 50  # Important but not more than food
             
-            # Distance to food (closer is better)
-            if food:
-                food_dist = abs(new_x - food[0]) + abs(new_y - food[1])
+            # Distance to nearest food (closer is better)
+            if nearest_food:
+                food_dist = abs(new_x - nearest_food["x"]) + abs(new_y - nearest_food["y"])
                 score += (grid_width + grid_height - food_dist) * 10
             
             # Prefer staying away from edges

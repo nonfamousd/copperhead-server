@@ -1,6 +1,6 @@
 # CopperHead Server
 
-Version: 2.1.0
+Version: 3.0.1
 
 A server for a 2-player Snake game. The CopperHead server manages game state and multi-round knockout competitions, communicating with human and robot clients via WebSocket API. The server also supports launching the default "CopperBot" AI-controlled opponent, and and observer mode for spectating games.
 

@@ -31,6 +31,27 @@ class ServerConfig:
     grid_height: int = 20
     tick_rate: float = 0.15
     bots: int = 0
+    # Fruit settings
+    fruit_warning: int = 20  # Ticks before expiry when lifetime is reported to client
+    max_fruits: int = 1  # Max fruits on screen at once
+    fruit_interval: int = 5  # Min ticks between fruit spawns
+    # Fruit properties: {type: {"propensity": int, "lifetime": int (0=infinite)}}
+    fruits: dict = None
+    
+    def __init__(self):
+        # Default fruit config: only apples, never expire
+        self.fruits = {
+            "apple": {"propensity": 1, "lifetime": 0},
+            "orange": {"propensity": 0, "lifetime": 0},
+            "lemon": {"propensity": 0, "lifetime": 0},
+            "grapes": {"propensity": 0, "lifetime": 0},
+            "strawberry": {"propensity": 0, "lifetime": 0},
+            "banana": {"propensity": 0, "lifetime": 0},
+            "peach": {"propensity": 0, "lifetime": 0},
+            "cherry": {"propensity": 0, "lifetime": 0},
+            "watermelon": {"propensity": 0, "lifetime": 0},
+            "kiwi": {"propensity": 0, "lifetime": 0},
+        }
 
 config = ServerConfig()
 
@@ -465,6 +486,7 @@ class Snake:
         self.next_direction = direction
         self.input_queue: list[str] = []
         self.alive = True
+        self.buff = "default"  # Current active buff (default, speed, shield, inversion, lucky, slow, scissors, ghost)
 
     def head(self) -> tuple[int, int]:
         return self.body[0]
@@ -520,10 +542,14 @@ class Snake:
             "body": self.body,
             "direction": self.direction,
             "alive": self.alive,
+            "buff": self.buff,
         }
 
 
 class Game:
+    # Available fruit types
+    FRUIT_TYPES = ["apple", "orange", "lemon", "grapes", "strawberry", "banana", "peach", "cherry", "watermelon", "kiwi"]
+    
     def __init__(self, mode: str = "two_player"):
         self.mode = mode
         self.reset()
@@ -534,15 +560,45 @@ class Game:
             1: Snake(1, (5, config.grid_height // 2), "right"),
             2: Snake(2, (config.grid_width - 6, config.grid_height // 2 + 1), "left"),
         }
-        self.food: Optional[tuple[int, int]] = None
+        self.foods: list[dict] = []  # List of {"x": int, "y": int, "type": str, "lifetime": int or None}
         self.running = False
         self.winner: Optional[int] = None
-        self.spawn_food()
+        self.ticks_since_last_fruit = config.fruit_interval  # Allow immediate first spawn
+        self.spawn_food_if_needed()
 
-    def spawn_food(self):
+    def choose_fruit_type(self) -> Optional[str]:
+        """Choose a random fruit type based on propensity weights. Returns None if no fruits configured."""
+        weights = []
+        types = []
+        for fruit_type, props in config.fruits.items():
+            propensity = props.get("propensity", 0)
+            if propensity > 0:
+                weights.append(propensity)
+                types.append(fruit_type)
+        if not weights:
+            return None
+        return random.choices(types, weights=weights, k=1)[0]
+
+    def spawn_food_if_needed(self):
+        """Spawn a food item if conditions are met (interval elapsed, under max_fruits)."""
+        if len(self.foods) >= config.max_fruits:
+            return
+        if self.ticks_since_last_fruit < config.fruit_interval:
+            return
+        
+        fruit_type = self.choose_fruit_type()
+        if not fruit_type:
+            return
+        
+        # Get lifetime from config (in ticks, 0 = infinite)
+        lifetime_ticks = config.fruits[fruit_type].get("lifetime", 0)
+        lifetime = lifetime_ticks if lifetime_ticks > 0 else None
+        
         occupied = set()
         for snake in self.snakes.values():
             occupied.update(snake.body)
+        for food in self.foods:
+            occupied.add((food["x"], food["y"]))
         available = [
             (x, y)
             for x in range(config.grid_width)
@@ -550,7 +606,35 @@ class Game:
             if (x, y) not in occupied
         ]
         if available:
-            self.food = random.choice(available)
+            pos = random.choice(available)
+            self.foods.append({"x": pos[0], "y": pos[1], "type": fruit_type, "lifetime": lifetime})
+            self.ticks_since_last_fruit = 0
+
+    def get_food_at(self, pos: tuple[int, int]) -> Optional[dict]:
+        """Get the food item at the given position, or None if no food there."""
+        for food in self.foods:
+            if (food["x"], food["y"]) == pos:
+                return food
+        return None
+
+    def remove_food_at(self, pos: tuple[int, int]):
+        """Remove the food item at the given position."""
+        self.foods = [f for f in self.foods if (f["x"], f["y"]) != pos]
+
+    def update_food_lifetimes(self):
+        """Decrement food lifetimes (in ticks) and remove expired foods."""
+        self.ticks_since_last_fruit += 1
+        expired = []
+        for food in self.foods:
+            if food["lifetime"] is not None:
+                food["lifetime"] -= 1
+                if food["lifetime"] <= 0:
+                    expired.append((food["x"], food["y"]))
+        # Remove expired foods
+        for pos in expired:
+            self.remove_food_at(pos)
+        # Try to spawn new food if needed
+        self.spawn_food_if_needed()
 
     def update(self):
         if not self.running:
@@ -562,10 +646,12 @@ class Game:
                 next_head = snake.get_next_head()
                 
                 # Check if next position has food - eating makes snake grow
-                grow = next_head == self.food if self.food else False
+                food = self.get_food_at(next_head)
+                grow = food is not None and food["type"] == "apple"  # Only apples grow the snake for now
                 snake.move(grow)
-                if grow:
-                    self.spawn_food()
+                if food:
+                    self.remove_food_at(next_head)
+                    # New food will spawn via spawn_food_if_needed() in update_food_lifetimes()
 
         # Check collisions
         for snake in self.snakes.values():
@@ -612,11 +698,21 @@ class Game:
                 self.winner = None  # Draw
 
     def to_dict(self) -> dict:
+        # Only report lifetime if within warning threshold
+        foods_for_client = []
+        for food in self.foods:
+            food_data = {"x": food["x"], "y": food["y"], "type": food["type"]}
+            if food["lifetime"] is not None and food["lifetime"] <= config.fruit_warning:
+                food_data["lifetime"] = food["lifetime"]
+            else:
+                food_data["lifetime"] = None
+            foods_for_client.append(food_data)
+        
         return {
             "mode": self.mode,
             "grid": {"width": config.grid_width, "height": config.grid_height},
             "snakes": {pid: s.to_dict() for pid, s in self.snakes.items()},
-            "food": self.food,
+            "foods": foods_for_client,
             "running": self.running,
             "winner": self.winner,
         }
@@ -898,6 +994,8 @@ class GameRoom:
         try:
             while self.game.running:
                 self.game.update()
+                # Update food lifetimes (in ticks)
+                self.game.update_food_lifetimes()
                 await self.broadcast_state()
                 if not self.game.running:
                     if self.game.winner:
@@ -1707,6 +1805,18 @@ def apply_config(args):
         logger.error(f"Invalid grid size '{grid_size}'. Using default 30x20.")
         config.grid_width = 30
         config.grid_height = 20
+    
+    # Fruit settings
+    config.fruit_warning = spec.get("fruit_warning", 20)
+    config.max_fruits = spec.get("max_fruits", 1)
+    config.fruit_interval = spec.get("fruit_interval", 40)
+    
+    # Load fruit properties from spec
+    if "fruits" in spec:
+        for fruit_type, props in spec["fruits"].items():
+            if fruit_type in config.fruits:
+                config.fruits[fruit_type]["propensity"] = props.get("propensity", 0)
+                config.fruits[fruit_type]["lifetime"] = props.get("lifetime", 0)
 
 
 def spawn_initial_bots(count: int):

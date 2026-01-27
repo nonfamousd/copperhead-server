@@ -46,25 +46,38 @@ The `state` message includes a `game` object with:
 ```json
 {
   "running": true,
+  "grid": {"width": 30, "height": 20},
   "snakes": {
     "1": {
       "body": [[10, 5], [9, 5], [8, 5]],
-      "direction": "right"
+      "direction": "right",
+      "alive": true,
+      "buff": "default"
     },
     "2": {
       "body": [[20, 15], [21, 15]],
-      "direction": "left"
+      "direction": "left",
+      "alive": true,
+      "buff": "speed"
     }
   },
-  "food": [15, 10]
+  "foods": [
+    {"x": 15, "y": 10, "type": "apple", "lifetime": null}
+  ]
 }
 ```
 
 - **running**: Boolean - is the game currently active?
+- **grid**: Object with `width` and `height` of the game board
 - **snakes**: Object with player IDs as keys, each containing:
   - **body**: Array of [x, y] coordinates (head is first element)
   - **direction**: Current movement direction ("up", "down", "left", "right")
-- **food**: [x, y] coordinates of the food item
+  - **alive**: Boolean - is this snake still alive?
+  - **buff**: Current active buff ("default", "speed", "shield", "inversion", "lucky", "slow", "scissors", "ghost")
+- **foods**: Array of food items, each with:
+  - **x**, **y**: Coordinates of the food
+  - **type**: Fruit type ("apple", "orange", "lemon", "grapes", "strawberry", "banana", "peach", "cherry", "watermelon", "kiwi")
+  - **lifetime**: Ticks remaining before fruit expires, or `null`. Only reported when the fruit is about to expire (within the server's `fruit_warning` threshold). A value of `null` means the fruit either never expires or is not yet close to expiring.
 
 ### Commands sent by bots to the server
 
