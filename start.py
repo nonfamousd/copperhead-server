@@ -11,6 +11,9 @@ import sys
 import subprocess
 import time
 
+# Force unbuffered output for Codespaces visibility
+os.environ["PYTHONUNBUFFERED"] = "1"
+
 # Ensure UTF-8 output on Windows
 if sys.platform == "win32":
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')
@@ -22,13 +25,17 @@ CYAN = "\033[96m"
 BOLD = "\033[1m"
 RESET = "\033[0m"
 
+def log(message):
+    """Print and flush immediately."""
+    print(message, flush=True)
+
 def print_banner():
     """Print a welcome banner."""
-    print()
-    print(f"{GREEN}{'='*60}{RESET}")
-    print(f"{GREEN}{BOLD}       🐍 COPPERHEAD SNAKE GAME SERVER 🐍{RESET}")
-    print(f"{GREEN}{'='*60}{RESET}")
-    print()
+    log("")
+    log(f"{GREEN}{'='*60}{RESET}")
+    log(f"{GREEN}{BOLD}       🐍 COPPERHEAD SNAKE GAME SERVER 🐍{RESET}")
+    log(f"{GREEN}{'='*60}{RESET}")
+    log("")
 
 def get_connection_info():
     """Get the WebSocket URL based on environment."""
@@ -90,35 +97,35 @@ def update_readme_with_url(ws_url):
         with open(readme_path, "w", encoding="utf-8") as f:
             f.write(content)
         
-        print(f"{GREEN}✓ Updated README.md with your connection URL{RESET}")
+        log(f"{GREEN}✓ Updated README.md with your connection URL{RESET}")
         
     except Exception as e:
         # Don't fail startup if README update fails
-        print(f"{YELLOW}Note: Could not update README.md: {e}{RESET}")
+        log(f"{YELLOW}Note: Could not update README.md: {e}{RESET}")
 
 def print_connection_instructions(ws_url, is_codespace):
     """Print connection instructions for players."""
     client_url = "https://revodavid.github.io/copperhead-client/"
     
-    print(f"{CYAN}📡 HOW TO PLAY:{RESET}")
-    print()
-    print(f"   {BOLD}Step 1:{RESET} Open the game client in your browser:")
-    print(f"          {YELLOW}{client_url}{RESET}")
-    print()
-    print(f"   {BOLD}Step 2:{RESET} Paste this Server URL into the client:")
-    print()
-    print(f"          {GREEN}{BOLD}{ws_url}{RESET}")
-    print()
+    log(f"{CYAN}📡 HOW TO PLAY:{RESET}")
+    log("")
+    log(f"   {BOLD}Step 1:{RESET} Open the game client in your browser:")
+    log(f"          {YELLOW}{client_url}{RESET}")
+    log("")
+    log(f"   {BOLD}Step 2:{RESET} Paste this Server URL into the client:")
+    log("")
+    log(f"          {GREEN}{BOLD}{ws_url}{RESET}")
+    log("")
     
     if is_codespace:
-        print(f"   {BOLD}Step 3:{RESET} {YELLOW}⚠️  IMPORTANT - Make your port PUBLIC:{RESET}")
-        print(f"          • Click the {BOLD}Ports{RESET} tab in the bottom panel")
-        print(f"          • Right-click on port {BOLD}8000{RESET}")
-        print(f"          • Select {BOLD}Port Visibility → Public{RESET}")
-        print()
+        log(f"   {BOLD}Step 3:{RESET} {YELLOW}⚠️  IMPORTANT - Make your port PUBLIC:{RESET}")
+        log(f"          • Click the {BOLD}Ports{RESET} tab in the bottom panel")
+        log(f"          • Right-click on port {BOLD}8000{RESET}")
+        log(f"          • Select {BOLD}Port Visibility → Public{RESET}")
+        log("")
     
-    print(f"{GREEN}{'='*60}{RESET}")
-    print()
+    log(f"{GREEN}{'='*60}{RESET}")
+    log("")
 
 def main():
     """Main entry point."""
@@ -132,8 +139,8 @@ def main():
     
     print_connection_instructions(ws_url, is_codespace)
     
-    print(f"Starting server... (Press Ctrl+C to stop)")
-    print()
+    log("Starting server... (Press Ctrl+C to stop)")
+    log("")
     
     # Pass through any command-line arguments to main.py
     # Set env var to suppress duplicate connection info from main.py
@@ -142,14 +149,15 @@ def main():
     
     env = os.environ.copy()
     env["COPPERHEAD_QUIET_STARTUP"] = "1"
+    env["PYTHONUNBUFFERED"] = "1"
     
-    args = [sys.executable, main_script] + sys.argv[1:]
+    args = [sys.executable, "-u", main_script] + sys.argv[1:]
     
     try:
         subprocess.run(args, env=env)
     except KeyboardInterrupt:
-        print()
-        print(f"{YELLOW}Server stopped.{RESET}")
+        log("")
+        log(f"{YELLOW}Server stopped.{RESET}")
 
 if __name__ == "__main__":
     main()

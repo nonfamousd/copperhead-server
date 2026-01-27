@@ -6,18 +6,17 @@ A server for a 2-player Snake game. The CopperHead server manages game state and
 
 NOTE: This repository provides only the server for hosting and managing the game. Find the client for playing the game in the [CopperHead Client](../copperhead-client/) repository. 
 
-
 ## Quick Start: Play CopperHead
 
-1. **Launch the CopperHead server in CodeSpaces**: Click the green **Code** button on this repository page, select the **Codespaces** tab, and click **Create codespace on main**. The server will start automatically.
+1. **Launch the CopperHead server in CodeSpaces**: Click the green **Code** button on this repository page, select the **Codespaces** tab, and click **Create codespace on main**. The server will start after a few minutes.
 
- - When prompted, click **Make Public** so players can connect.
+    - When prompted, click **Make Public** so players can connect.
 
- ![Your application running on port 8000 is available](img/make-port-public.png)
+    ![Your application running on port 8000 is available](img/make-port-public.png)
 
-2. **Copy the WebSocket URL** displayed in Codespaces session to the clipboard.
+2. **Copy the WebSocket URL** displayed in the Codespaces window to the clipboard.
 
-![Connect Now information](img/connect-now.png "Connect Now")
+    ![Connect Now information](img/connect-now.png "Connect Now")
 
 - This "Connect Now" information is added to README.md after the CodeSpaces session has completed its launch.
 
