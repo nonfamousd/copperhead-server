@@ -60,7 +60,10 @@ def update_readme_with_url(ws_url):
         connection_block = f"""{marker_start}
 ## 🎮 Connect Now!
 
-**Your Server URL:** `{ws_url}`
+**Your Server URL:**
+```
+{ws_url}
+```
 
 1. Open the client: **https://revodavid.github.io/copperhead-client/**
 2. Paste the Server URL above into the client

@@ -4,7 +4,32 @@ Version: 3.2.0
 
 A server for a 2-player Snake game. The CopperHead server manages game state and multi-round knockout competitions, communicating with human and robot clients via WebSocket API. The server also supports adding instances of the default "CopperBot" AI-controlled opponent to the competition, and an observer mode for spectating games.
 
-NOTE: This repo only provides the server for hosting and managing the game. 
+NOTE: This repository provides only the server for hosting and managing the game. Find the client for playing the game in the [CopperHead Client](../copperhead-client/) repository. 
+
+
+## Quick Start: Play CopperHead
+
+1. **Launch the CopperHead server in CodeSpaces**: Click the **Code** button on this repository page, select the **Codespaces** tab, and click **Create codespace on main**. The server will start automatically.
+
+ - When prompted to click **Make Public** so your client can connect.
+
+ ![Your application running on port 8000 is available](img/make-port-public.png)
+
+2. **Copy the WebSocket URL** displayed in Codespaces session to the clipboard.
+
+![Connect Now information](img/connect-now.png "Connect Now")
+
+- This "Connect Now" information is added to README.md after the CodeSpaces session has completed its launch.
+
+3. **Open the CopperHead client** in your web browser: [CopperHead Client](https://revodavid.github.io/copperhead-client/)
+
+
+
+
+
+
+
+
 
 * To **play the game** against friends or bots, launch the [CopperHead client](https://revodavid.github.io/copperhead-client/). 
   - You can also launch the [copperhead-client](https://github.com/revodavid/copperhead-client) from this repository on your own Web server or via GitHub CodeSpaces.
