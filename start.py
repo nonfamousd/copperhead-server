@@ -44,6 +44,55 @@ def get_connection_info():
     
     return ws_url, is_codespace
 
+def update_readme_with_url(ws_url):
+    """Update README.md with the actual WebSocket URL for this Codespace."""
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    readme_path = os.path.join(script_dir, "README.md")
+    
+    try:
+        with open(readme_path, "r", encoding="utf-8") as f:
+            content = f.read()
+        
+        # Check if there's already a connection info section, replace it
+        marker_start = "<!-- CODESPACE_CONNECTION_START -->"
+        marker_end = "<!-- CODESPACE_CONNECTION_END -->"
+        
+        connection_block = f"""{marker_start}
+## 🎮 Connect Now!
+
+**Your Server URL:** `{ws_url}`
+
+1. Open the client: **https://revodavid.github.io/copperhead-client/**
+2. Paste the Server URL above into the client
+3. ⚠️ Make sure port 8000 is **Public** (Ports tab → right-click → Port Visibility → Public)
+
+{marker_end}"""
+        
+        if marker_start in content:
+            # Replace existing block
+            import re
+            pattern = f"{marker_start}.*?{marker_end}"
+            content = re.sub(pattern, connection_block, content, flags=re.DOTALL)
+        else:
+            # Insert after the first heading line
+            lines = content.split("\n")
+            insert_idx = 1  # After first line
+            for i, line in enumerate(lines):
+                if line.startswith("# "):
+                    insert_idx = i + 1
+                    break
+            lines.insert(insert_idx, "\n" + connection_block + "\n")
+            content = "\n".join(lines)
+        
+        with open(readme_path, "w", encoding="utf-8") as f:
+            f.write(content)
+        
+        print(f"{GREEN}✓ Updated README.md with your connection URL{RESET}")
+        
+    except Exception as e:
+        # Don't fail startup if README update fails
+        print(f"{YELLOW}Note: Could not update README.md: {e}{RESET}")
+
 def print_connection_instructions(ws_url, is_codespace):
     """Print connection instructions for players."""
     client_url = "https://revodavid.github.io/copperhead-client/"
@@ -73,6 +122,11 @@ def main():
     print_banner()
     
     ws_url, is_codespace = get_connection_info()
+    
+    # In Codespaces, update README.md so the URL is visible in the Explorer
+    if is_codespace:
+        update_readme_with_url(ws_url)
+    
     print_connection_instructions(ws_url, is_codespace)
     
     print(f"Starting server... (Press Ctrl+C to stop)")
