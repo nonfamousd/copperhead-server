@@ -1371,6 +1371,7 @@ class RoomManager:
         open_slots = 0 if competition_in_progress else max_players - total_players
         
         return {
+            "version": "3.3.0",
             "arenas": config.arenas,
             "max_players": max_players,
             "total_players": total_players,
@@ -1380,6 +1381,7 @@ class RoomManager:
             "speed": config.tick_rate,
             "grid_width": config.grid_width,
             "grid_height": config.grid_height,
+            "points_to_win": config.points_to_win,
             "rooms": [
                 {
                     "room_id": room.room_id,
