@@ -1,6 +1,6 @@
 # CopperHead Server
 
-Version: 3.3.1
+Version: 3.3.0
 
 A server for a 2-player Snake game. The CopperHead server manages game state and multi-round knockout competitions, communicating with human and robot clients via WebSocket API.
 
@@ -12,13 +12,15 @@ A server for a 2-player Snake game. The CopperHead server manages game state and
 
     ![Your application running on port 8000 is available](img/make-port-public.png)
 
-2. **Click the Play Now link** displayed in README.md (visible in the Explorer panel after startup). This opens the client with your server already connected.
+2. **Click the link** displayed in README.md (visible in the Explorer panel after startup). This opens the client with your server already connected.
 
     ![Play Now link](img/connect-now.png "Play Now")
 
 3. **Play** vs a friend or a bot
     - Click **Join** and invite a friend to do the same on this server
     - Or, click **Play Bot** to join and add a bot opponent automatically
+
+    ![Screenshot](img/screenshot-3.2.0.png)
 
 ## About CopperHead Server
 
@@ -49,6 +51,8 @@ See [Competition Logic](competition-logic.md) for full details on how competitio
 Usage: python main.py [options] [spec-file]
 
 * `spec-file`: Optional path to a JSON configuration file. If no arguments are provided, `server-settings.json` is used if it exists.
+
+If the configuration file is modified while the server is running, the server will automatically load the new settings, cancel all active games and restart the competition.
 
 ### Command-Line Options
 

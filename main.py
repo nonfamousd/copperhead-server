@@ -724,18 +724,29 @@ class Game:
                     head_on_collision = True
             
             if head_on_collision:
-                # Check if only one player changed direction - that player loses
+                # Resolve simultaneous collision using tiebreaker rules:
+                # 1. Longer snake wins
+                # 2. If equal length, player who changed direction most recently loses
+                # 3. Otherwise, draw (no points awarded)
+                s1_len = len(s1.body)
+                s2_len = len(s2.body)
                 s1_changed = s1.changed_direction_last_move
                 s2_changed = s2.changed_direction_last_move
                 
-                if s1_changed and not s2_changed:
-                    # S1 changed direction, S1 loses
+                if s1_len > s2_len:
+                    # S1 is longer, S1 wins
+                    s2.alive = False
+                elif s2_len > s1_len:
+                    # S2 is longer, S2 wins
+                    s1.alive = False
+                elif s1_changed and not s2_changed:
+                    # Equal length, S1 changed direction most recently, S1 loses
                     s1.alive = False
                 elif s2_changed and not s1_changed:
-                    # S2 changed direction, S2 loses
+                    # Equal length, S2 changed direction most recently, S2 loses
                     s2.alive = False
                 else:
-                    # Both changed or neither changed - both die (draw)
+                    # Equal length, both or neither changed direction - draw
                     s1.alive = False
                     s2.alive = False
 
@@ -1382,7 +1393,7 @@ class RoomManager:
         ]
         
         return {
-            "version": "3.3.1",
+            "version": "3.3.0",
             "arenas": config.arenas,
             "max_players": max_players,
             "total_players": total_players,
