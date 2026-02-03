@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
-CopperHead Robot - Autonomous Snake game player.
+Murderbot - CopperHead autonomous Snake game bot.
 
-Connects to a CopperHead server and plays the game using AI.
+This module implements the "murderbot" player that connects to a CopperHead
+server and plays the game using AI.
 """
 
 import asyncio
