@@ -127,7 +127,7 @@ class RobotPlayer:
             await self.ws.send(json.dumps({
                 "action": "ready",
                 "mode": "two_player",
-                "name": f"David L{self.difficulty}"
+                "name": f"MurderBot L{self.difficulty}"
             }))
             self.log(f"Ready! Playing at difficulty {self.difficulty}")
         
