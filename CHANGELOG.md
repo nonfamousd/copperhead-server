@@ -2,6 +2,20 @@
 
 All notable changes to the CopperHead Server are documented in this file.
 
+## [3.5.0] - 2026-02-05
+
+### Added
+- Championship history endpoint (`/history`) tracks past competition winners
+- Bots now automatically spawn when competition resets
+
+### Changed
+- Default port changed from 8000 to 8765 to avoid conflicts with local web servers
+
+### Fixed
+- Matches no longer continue beyond points_to_win limit (added guards to start_game and _start_next_game)
+- Fixed duplicate bot spawning at server startup
+- Observer now switches to another match when followed player has a bye
+
 ## [3.4.1] - 2026-02-04
 
 ### Added

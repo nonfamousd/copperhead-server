@@ -83,9 +83,9 @@ async def startup_event():
     github_domain = os.environ.get("GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN", "app.github.dev")
     
     if codespace_name:
-        ws_url = f"wss://{codespace_name}-8000.{github_domain}/ws/"
+        ws_url = f"wss://{codespace_name}-8765.{github_domain}/ws/"
     else:
-        ws_url = "ws://localhost:8000/ws/"
+        ws_url = "ws://localhost:8765/ws/"
     
     # Only show full connection info if not launched via start.py (which shows its own banner)
     if not os.environ.get("COPPERHEAD_QUIET_STARTUP"):
@@ -95,14 +95,14 @@ async def startup_event():
             logger.info("📡 CLIENT CONNECTION URL:")
             logger.info(f"   {ws_url}")
             logger.info("")
-            logger.info("⚠️  IMPORTANT: Make port 8000 public!")
+            logger.info("⚠️  IMPORTANT: Make port 8765 public!")
             logger.info("   1. Open the Ports tab (bottom panel)")
-            logger.info("   2. Right-click port 8000 → Port Visibility → Public")
+            logger.info("   2. Right-click port 8765 → Port Visibility → Public")
             logger.info("=" * 60)
             logger.info("")
         else:
             logger.info("")
-            logger.info("📡 Client connection URL: ws://localhost:8000/ws/")
+            logger.info("📡 Client connection URL: ws://localhost:8765/ws/")
             logger.info("")
     
     # Initialize competition
@@ -118,7 +118,7 @@ async def startup_event():
     logger.info(f"📡 Server URL: {ws_url}")
     logger.info(f"🎮 Play now: {client_url}")
     if codespace_name:
-        logger.info(f"⚠️  Remember to make port 8000 PUBLIC in the Ports tab!")
+        logger.info(f"⚠️  Remember to make port 8765 PUBLIC in the Ports tab!")
     
     # Start config file watcher for auto-restart on config changes
     if _config_file_path:
@@ -163,6 +163,9 @@ class MatchResult:
 class Competition:
     """Manages a round-robin knockout competition."""
     
+    # Class-level history persists across competition resets
+    championship_history: list[dict] = []
+    
     def __init__(self):
         self.state = CompetitionState.WAITING_FOR_PLAYERS
         self.players: dict[str, PlayerInfo] = {}  # uid -> PlayerInfo
@@ -196,6 +199,15 @@ class Competition:
         self.reset_start_time = None
         self._next_uid = 1
         logger.info(f"🏆 Competition waiting for {config.arenas * 2} players")
+        
+        # Spawn bots for the new competition
+        if config.bots > 0:
+            import threading
+            def delayed_bot_spawn():
+                import time
+                time.sleep(1)
+                spawn_initial_bots(config.bots)
+            threading.Thread(target=delayed_bot_spawn, daemon=True).start()
     
     def required_players(self) -> int:
         return config.arenas * 2
@@ -372,6 +384,14 @@ class Competition:
             self.reset_start_time = time.time()  # Start countdown immediately
             champion = self.players[self.champion_uid]
             logger.info(f"🎉 Competition complete! Champion: {champion.name}")
+            
+            # Record in championship history
+            Competition.championship_history.append({
+                "champion": champion.name,
+                "players": len(self.players),
+                "timestamp": datetime.now().isoformat()
+            })
+            
             await self._broadcast_competition_complete()
             # Schedule reset
             asyncio.create_task(self._schedule_reset())
@@ -998,9 +1018,9 @@ class GameRoom:
         github_domain = os.environ.get("GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN", "app.github.dev")
         
         if codespace_name:
-            server_url = f"wss://{codespace_name}-8000.{github_domain}/ws/"
+            server_url = f"wss://{codespace_name}-8765.{github_domain}/ws/"
         else:
-            server_url = "ws://localhost:8000/ws/"
+            server_url = "ws://localhost:8765/ws/"
         
         # Path to copperbot.py (same directory as main.py)
         script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -1019,6 +1039,16 @@ class GameRoom:
         # Guard against duplicate start_game calls (e.g., during game-to-game transitions)
         if self.game.running or (self.game_task and not self.game_task.done()):
             logger.warning(f"⚠️ [Room {self.room_id}] start_game called but game already running or task active, ignoring")
+            return
+        
+        # Guard: don't start if match is already complete
+        if self.match_complete:
+            logger.warning(f"⚠️ [Room {self.room_id}] start_game called but match is complete, ignoring")
+            return
+        
+        # Guard: don't start if someone already won the match
+        if self._check_match_complete():
+            logger.warning(f"⚠️ [Room {self.room_id}] start_game called but match winner exists (wins={self.wins}), ignoring")
             return
         
         self.game = Game(mode="two_player")
@@ -1126,17 +1156,36 @@ class GameRoom:
     async def _wait_for_ready(self):
         """Wait for both players to signal ready, then start the next game."""
         while len(self.ready) < 2:
+            # Check if match is already complete (shouldn't start another game)
+            if self.match_complete:
+                logger.info(f"⚠️ [Room {self.room_id}] Match already complete, not starting new game")
+                return
             # Check if players are still connected
             if len(self.connections) < 2:
                 logger.info(f"⚠️ [Room {self.room_id}] Player disconnected while waiting for ready")
                 return
             await asyncio.sleep(0.1)
         
+        # Double-check match isn't complete before starting
+        if self.match_complete:
+            logger.info(f"⚠️ [Room {self.room_id}] Match completed while waiting, not starting new game")
+            return
+            
         # Both players ready - start next game
         await self._start_next_game()
     
     async def _start_next_game(self):
         """Start the next game in the match."""
+        # Guard: don't start if match is complete
+        if self.match_complete:
+            logger.warning(f"⚠️ [Arena {self.room_id}] _start_next_game called but match is complete, ignoring")
+            return
+            
+        # Guard: don't start if someone already won
+        if self._check_match_complete():
+            logger.warning(f"⚠️ [Arena {self.room_id}] _start_next_game called but match winner exists, ignoring")
+            return
+        
         self.game = Game(mode="two_player")
         self.game.running = True
         
@@ -1335,9 +1384,9 @@ class RoomManager:
         github_domain = os.environ.get("GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN", "app.github.dev")
         
         if codespace_name:
-            server_url = f"wss://{codespace_name}-8000.{github_domain}/ws/"
+            server_url = f"wss://{codespace_name}-8765.{github_domain}/ws/"
         else:
-            server_url = "ws://localhost:8000/ws/"
+            server_url = "ws://localhost:8765/ws/"
         
         script_dir = os.path.dirname(os.path.abspath(__file__))
         script_path = os.path.join(script_dir, "copperbot.py")
@@ -1406,7 +1455,7 @@ class RoomManager:
         ]
         
         return {
-            "version": "3.4.1",
+            "version": "3.5.0",
             "arenas": config.arenas,
             "max_players": max_players,
             "total_players": total_players,
@@ -1763,6 +1812,12 @@ async def competition_status():
     return competition.get_status()
 
 
+@app.get("/history")
+async def championship_history():
+    """Get history of completed championships."""
+    return {"championships": Competition.championship_history}
+
+
 @app.post("/add_bot")
 async def add_bot(difficulty: int = None):
     """Add a CopperBot to the first available room."""
@@ -1825,8 +1880,8 @@ def parse_args():
         help="Host to bind to. Default: 0.0.0.0"
     )
     parser.add_argument(
-        "--port", type=int, default=8000,
-        help="Port to bind to. Default: 8000"
+        "--port", type=int, default=8765,
+        help="Port to bind to. Default: 8765"
     )
     return parser.parse_args()
 
@@ -2026,9 +2081,9 @@ def spawn_initial_bots(count: int):
     github_domain = os.environ.get("GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN", "app.github.dev")
     
     if codespace_name:
-        server_url = f"wss://{codespace_name}-8000.{github_domain}/ws/"
+        server_url = f"wss://{codespace_name}-8765.{github_domain}/ws/"
     else:
-        server_url = "ws://localhost:8000/ws/"
+        server_url = "ws://localhost:8765/ws/"
     
     for i in range(count):
         difficulty = random.randint(1, 10)
@@ -2054,13 +2109,6 @@ if __name__ == "__main__":
     logger.info(f"   Speed: {config.tick_rate}s/tick")
     logger.info(f"   Bots: {config.bots}")
     
-    # Spawn initial bots after a short delay (server needs to start first)
-    if config.bots > 0:
-        import threading
-        def delayed_bot_spawn():
-            import time
-            time.sleep(2)
-            spawn_initial_bots(config.bots)
-        threading.Thread(target=delayed_bot_spawn, daemon=True).start()
+    # Note: Bots are spawned by start_waiting() during server startup
     
     uvicorn.run(app, host=args.host, port=args.port)

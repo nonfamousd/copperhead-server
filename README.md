@@ -10,7 +10,7 @@ A server for a 2-player Snake game. The CopperHead server manages game state and
 
     - When prompted, click **Make Public** so players can connect.
 
-    ![Your application running on port 8000 is available](img/make-port-public.png)
+    ![Your application running on port 8765 is available](img/make-port-public.png)
 
 2. **Click the link** displayed in README.md (visible in the Explorer panel after startup). This opens the client with your server already connected.
 
@@ -99,7 +99,7 @@ pip install -r requirements.txt
 python main.py
 ```
 
-For local servers, use: `ws://localhost:8000/ws`
+For local servers, use: `ws://localhost:8765/ws`
 
 ## API
 
@@ -127,10 +127,10 @@ Use the `/add_bot` API endpoint to spawn CopperBot opponents:
 
 ```bash
 # Spawn a bot with random difficulty (1-10)
-curl -X POST "http://localhost:8000/add_bot"
+curl -X POST "http://localhost:8765/add_bot"
 
 # Spawn a bot with specific difficulty
-curl -X POST "http://localhost:8000/add_bot?difficulty=7"
+curl -X POST "http://localhost:8765/add_bot?difficulty=7"
 ```
 
 ## License

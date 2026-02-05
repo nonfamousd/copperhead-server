@@ -140,10 +140,10 @@ This is the easiest way to quickly test your bot. Use the server's `/add_bot` AP
 
 ```bash
 # First, spawn a CopperBot opponent
-curl -X POST "http://localhost:8000/add_bot?difficulty=5"
+curl -X POST "http://localhost:8765/add_bot?difficulty=5"
 
 # Then run your bot
-python mysnakebot.py --server ws://localhost:8000/ws/ --difficulty 5
+python mysnakebot.py --server ws://localhost:8765/ws/ --difficulty 5
 ```
 
 Or from the client UI, click "Add Bot" to spawn a CopperBot, then run your bot to join as the second player.
@@ -155,7 +155,7 @@ For tournament-style testing with multiple bots:
 1. Start a CopperHead server (or connect to an existing one)
 2. Run your bot:
    ```bash
-   python mysnakebot.py --server ws://localhost:8000/ws/ --difficulty 5
+   python mysnakebot.py --server ws://localhost:8765/ws/ --difficulty 5
    ```
 3. Your bot will wait for another player (human or bot) to join
 
@@ -174,7 +174,7 @@ Watch your bot play and identify weaknesses. Common improvements:
 
 | Argument | Short | Default | Description |
 |----------|-------|---------|-------------|
-| `--server` | `-s` | `ws://localhost:8000/ws/` | Server WebSocket URL |
+| `--server` | `-s` | `ws://localhost:8765/ws/` | Server WebSocket URL |
 | `--difficulty` | `-d` | `5` | Spawned opponent AI difficulty level (1-10) |
 | `--quiet` | `-q` | `false` | Suppress console output |
 

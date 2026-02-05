@@ -401,8 +401,8 @@ class RobotPlayer:
 
 async def main():
     parser = argparse.ArgumentParser(description="CopperHead Robot Player")
-    parser.add_argument("--server", "-s", default="ws://localhost:8000/ws/",
-                        help="Server WebSocket URL (default: ws://localhost:8000/ws/)")
+    parser.add_argument("--server", "-s", default="ws://localhost:8765/ws/",
+                        help="Server WebSocket URL (default: ws://localhost:8765/ws/)")
     parser.add_argument("--difficulty", "-d", type=int, default=5,
                         help="AI difficulty 1-10 (default: 5)")
     parser.add_argument("--quiet", "-q", action="store_true",

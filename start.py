@@ -43,10 +43,10 @@ def get_connection_info():
     github_domain = os.environ.get("GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN", "app.github.dev")
     
     if codespace_name:
-        ws_url = f"wss://{codespace_name}-8000.{github_domain}/ws/"
+        ws_url = f"wss://{codespace_name}-8765.{github_domain}/ws/"
         is_codespace = True
     else:
-        ws_url = "ws://localhost:8000/ws/"
+        ws_url = "ws://localhost:8765/ws/"
         is_codespace = False
     
     return ws_url, is_codespace
@@ -80,7 +80,7 @@ Or copy this Server URL into the client:
 {ws_url}
 ```
 
-⚠️ Make sure port 8000 is **Public** (Ports tab → right-click → Port Visibility → Public)
+⚠️ Make sure port 8765 is **Public** (Ports tab → right-click → Port Visibility → Public)
 
 {marker_end}"""
         
@@ -125,7 +125,7 @@ def print_connection_instructions(ws_url, is_codespace):
     if is_codespace:
         log(f"   {YELLOW}⚠️  IMPORTANT - Make your port PUBLIC first:{RESET}")
         log(f"      • Click the {BOLD}Ports{RESET} tab in the bottom panel")
-        log(f"      • Right-click on port {BOLD}8000{RESET}")
+        log(f"      • Right-click on port {BOLD}8765{RESET}")
         log(f"      • Select {BOLD}Port Visibility → Public{RESET}")
         log("")
     
